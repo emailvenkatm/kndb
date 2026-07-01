@@ -10,11 +10,23 @@ Updated: 2026-07-01. **Read this before quoting any KNDB number in the paper.**
 - **Correctness numbers** — adversarial catch rate (kndb 70/70, pg_naive 0/70, py_guards 30/70, pg_handrolled 70/70) and confidence drift (kndb + steelman 0.000; naive/py 0.21) come from actual runs of the adversarial suite, seed 42.
 - **LOC comparison** — 150 (kndb engine) vs 124 (steelman) vs 41 (py_guards, incomplete) vs 0 (naive) — counted programmatically, not eyeballed.
 
-## Not yet quotable (in progress or known gap)
+## Clinical demo on real Synthea (2026-07-01, docker/emulation)
 
-- **Absolute latency numbers** — everything so far ran under **OrbStack amd64 emulation** on Apple Silicon. Native install underway (background agent). Until that lands, only RELATIVE latency comparisons (KNDB vs steelman) should appear in the paper.
-- **Synthea demo numbers** — the 10k-patient generation is running now. Until it completes and the clinical scenario runs, the demo shows only the 5 inline toy rows in `demo/demo.sh`.
-- ~~CI green on a real runner~~ — **RESOLVED 2026-07-01**. Workflow moved to `.github/workflows/ci.yml`, private repo `emailvenkatm/kndb` created, first run GREEN in 1m57s. All 15 sub-tests pass on a hosted Ubuntu runner. Run: https://github.com/emailvenkatm/kndb/actions/runs/28507827663
+Ran end-to-end on `docker compose exec kndb-postgres`. Reproducible via `bash demo/demo_clinical.sh`.
+
+- **Population loaded:** 11,637 distinct patients, filtered from Synthea 4.0.0 v4.0.0 (SHA256 verified).
+- **kndb.fact row counts by kind:**
+  - observation: **544,349** (real Synthea labs across 5 LOINC codes: HbA1c, systolic/diastolic BP, fasting glucose, LDL)
+  - inference: **4,999** (synthesized `is_diabetic` predictions, seed 42, per-row confidence in [0.5, 0.95], mean 0.7047, min 0.5001)
+  - derived: **16,239** (90-day per-patient averages, sources reference obs `fact_id`s)
+- **Trial T2DM-06 screening (obs HbA1c ≥ 6.5):** 492 distinct eligible patients; 2,495 candidate join rows against model-inferred `is_diabetic=true`.
+- **Top Viterbi joined confidence:** 0.9025 (= 0.95 × 0.95). Engine-computed via `sr_viterbi(provenance(), 'kndb.fact_weights')`.
+- **Attack scenario:** picked `entity_id=-2147475695` (patient with no HbA1c observation), attempted to slot a 7.2 model-imputed value as `epistemic_kind='inference'` into the `hba1c` slot registered as observation-required. **KNDB rejected at write time with `R5` — payload NOT stored**. Plain Postgres would have accepted the same write silently (baseline in the old `demo/demo.sh`).
+- **Progressive depth on 550k-row DB:** obs 544,349 → +inf 549,348 → +der 565,587 (monotone recall).
+
+## Still in progress or known gap
+
+- **Absolute latency numbers** — everything measured so far ran under **OrbStack amd64 emulation**. Native ARM64 install SUCCEEDED (port 5434); native benchmark run currently in progress. Until it finishes, quote only RELATIVE comparisons.
 - **Concurrent-write safety** — no test hits the triggers from two sessions at once. Cannot claim race-free behavior for the reject policy.
 - **Autonomous-transaction audit** — rejected writes disappear on rollback per DECISIONS.md 2026-07-01. Documented limitation, not fixed.
 
@@ -27,17 +39,21 @@ Updated: 2026-07-01. **Read this before quoting any KNDB number in the paper.**
 
 ## The paper should say — and only say
 
-**Safe to write:**
+**Safe to write NOW:**
 - "KNDB catches every one of the 70 adversarial writes; naive Postgres catches zero; application-layer guards catch 30."
 - "A hand-rolled trigger suite (steelman baseline) matches KNDB's write-time correctness in 124 lines of PL/pgSQL vs 150 in KNDB. The steelman does not implement Viterbi propagation; KNDB does."
 - "KNDB and the steelman achieve identical joined confidence on 100 inner-join chains (drift ~ floating-point noise). Naive Postgres and Python guards drift 0.21 on average using the industry-standard `MIN(confidence)` proxy."
-- Once the Synthea run completes: "Loaded N Synthea patients producing M_obs observations, M_inf inferences, M_der derived aggregates. Trial T2DM-06 screening yields K candidates."
+- "Loaded 11,637 Synthea patients producing 544,349 observations, 4,999 inferences, 16,239 derived aggregates. Trial T2DM-06 screening yields 492 obs-based eligible patients and rejects a model-output masquerading as a lab measurement at write time (R5)."
+- "CI is green on a hosted GitHub Actions runner in 1m57s (see `.github/workflows/ci.yml`, run 28507827663)."
 
 **Do NOT write, yet:**
-- Absolute latency in μs (emulation caveat until native run).
-- "CI is green" without evidence of a real runner pass.
-- Any Synthea patient/row count until the running generation completes.
+- Absolute latency in μs (emulation caveat until native run completes; native run is currently in flight).
 
 ## Update log
 
-- 2026-07-01 — file created; Synthea 10k generation in progress; native install agent in progress.
+- 2026-07-01 04:00 — file created; Synthea 10k generation in progress; native install agent in progress.
+- 2026-07-01 04:20 — Synthea generated 11,637 patients / 8.86M raw obs; 544k kept after LOINC filter.
+- 2026-07-01 04:32 — native ProvSQL install SUCCEEDED (port 5434, arm64, native).
+- 2026-07-01 04:35 — G3 CI verified GREEN on a hosted GitHub runner.
+- 2026-07-01 04:50 — docker clinical demo runs end-to-end on real Synthea; 550k fact rows, attack rejected, screening returns 2,495 candidates.
+- 2026-07-01 04:55 — native benchmark in progress (background); will land absolute-latency numbers.

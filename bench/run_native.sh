@@ -29,7 +29,7 @@ NATIVE_USER="kndb_native"
 RESULTS_DIR="${REPO}/bench/results/native"
 mkdir -p "$RESULTS_DIR"
 
-PSQL="/opt/homebrew/opt/postgresql@17/bin/psql -h localhost -p 5434 -U kndb_native -d kndb_native -X -v ON_ERROR_STOP=1"
+PSQL="/opt/homebrew/opt/postgresql@17/bin/psql -h localhost -p 5434 -U kndb_native -d kndb_native -X -v ON_ERROR_STOP=1 -v search_path=\"\$user\",public,provsql"
 
 log() { printf "[run_native] %s\n" "$*"; }
 
@@ -49,6 +49,9 @@ $PSQL <<'SQL'
 DROP SCHEMA IF EXISTS kndb CASCADE;
 DROP SCHEMA IF EXISTS kndb_audit CASCADE;
 DROP SCHEMA IF EXISTS stage CASCADE;
+-- Match the docker bootstrap: put provsql on the DB search_path so
+-- engine/06_provsql_setup.sql's unqualified add_provenance() resolves.
+ALTER DATABASE kndb_native SET search_path = "$user", public, provsql;
 SQL
 
 for f in engine/00_extensions.sql engine/01_types.sql engine/02_facts_schema.sql \
