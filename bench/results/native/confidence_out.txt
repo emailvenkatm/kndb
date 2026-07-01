@@ -1,0 +1,12 @@
+
+=== kndb: confidence correctness ===
+[kndb] mean_abs_drift=0.000000 max_abs_drift=0.000000 exact=100/100
+
+=== pg_naive: confidence correctness ===
+[pg_naive] mean_abs_drift=0.210291 max_abs_drift=0.426117 exact=0/100
+
+=== py_guards: confidence correctness ===
+[py_guards] mean_abs_drift=0.210291 max_abs_drift=0.426117 exact=0/100
+
+=== pg_handrolled_triggers: confidence correctness ===
+[pg_handrolled_triggers] mean_abs_drift=0.000000 max_abs_drift=0.000000 exact=100/100

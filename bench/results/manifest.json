@@ -1,6 +1,6 @@
 {
   "seed": 42,
-  "dsn": "postgresql://kndb:kndb@localhost:5433/kndb",
+  "dsn": "postgresql://kndb_native:kndb_native@localhost:5434/kndb_native",
   "systems": [
     "kndb",
     "pg_naive",
@@ -9,5 +9,5 @@
   ],
   "rows_tp": 10000,
   "reps_tp": 10,
-  "run_at": "2026-07-01T05:39:54.788487+00:00"
+  "run_at": "2026-07-01T09:51:33.744646+00:00"
 }

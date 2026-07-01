@@ -15,6 +15,38 @@ Running log of concrete decisions made during KNDB construction. Newest at the t
 - Non-blocking annotation: `actions/checkout@v4` targets Node 20 (deprecated).
   Cosmetic — no functional impact.
 
+## 2026-07-01 — G2 native benchmark COMPLETE (arm64, no emulation)
+
+Absolute latency and throughput on native ARM64 Postgres 17.10 + ProvSQL
+1.10.0 (built from source), Darwin 25.4.0, seed 42, 10k rows × 10 reps:
+
+```
+kndb                  p50= 68.3us  p95= 91.1us  p99=146.6us  thru=13,150 rps
+pg_handrolled_triggers p50= 59.6us  p95= 80.7us  p99=157.0us  thru=14,912 rps
+```
+
+Comparison with previous OrbStack amd64-emulation numbers (same hardware,
+docker):
+```
+                        p50     thru     native / emulated
+kndb (emulated)          990us    853 rps
+kndb (native)             68us  13,150 rps      14.5x faster
+handrolled (emulated)    974us    865 rps
+handrolled (native)       60us  14,912 rps      16.2x faster
+```
+
+Correctness identical to emulated (as expected — arch-independent):
+kndb + handrolled both 70/100 caught, 100/100 exact Viterbi.
+
+**Paper narrative on overhead:**
+- KNDB is 14.6% slower (p50) than a hand-rolled trigger suite on native
+  arm64. Not 40% — that was the low-rep emulated noise.
+- KNDB's throughput deficit vs the steelman is 12% (13,150 vs 14,912 rps).
+- Both are honest overhead for the primitives KNDB provides above what the
+  steelman offers (Viterbi propagation across joins).
+
+Full artifacts: `bench/results/native/{manifest.json,run_out.txt,confidence_out.txt,loc_out.txt}`.
+
 ## 2026-07-01 — G2 unblocked: native ProvSQL v1.10.0 on Apple Silicon (port 5434)
 
 - Native ARM64 install SUCCESS via Homebrew Postgres 17 + boost + `make install`

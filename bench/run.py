@@ -94,6 +94,15 @@ SYS_META = {
 # ---------------------------------------------------------------------------
 
 def _reset_kndb(conn: psycopg.Connection) -> None:
+    # KNDB_PRESERVE_FACTS=1 keeps whatever is already in kndb.fact (used by
+    # bench/run_synthea.sh to measure adversarial catch + throughput against
+    # the Synthea-preloaded 565k-row DB, closing G2.3 in the task spec).
+    if os.environ.get("KNDB_PRESERVE_FACTS") == "1":
+        # Still reset the registries so slot_kind and conflict_policy are known.
+        with conn.cursor() as cur:
+            cur.execute("TRUNCATE kndb.slot_kind, kndb.conflict_policy CASCADE")
+        conn.commit()
+        return
     with conn.cursor() as cur:
         cur.execute("TRUNCATE kndb.fact, kndb_audit.evicted_fact, kndb.slot_kind, kndb.conflict_policy CASCADE")
     conn.commit()

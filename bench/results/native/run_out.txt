@@ -1,0 +1,20 @@
+
+=== kndb: adversarial replay ===
+[kndb] totals: {'system': 'kndb', 'total': 100, 'caught_at_write_time': 70, 'missed_silently': 0, 'crashed': 0}
+
+=== pg_naive: adversarial replay ===
+[pg_naive] totals: {'system': 'pg_naive', 'total': 100, 'caught_at_write_time': 0, 'missed_silently': 70, 'crashed': 0}
+
+=== py_guards: adversarial replay ===
+[py_guards] totals: {'system': 'py_guards', 'total': 100, 'caught_at_write_time': 30, 'missed_silently': 40, 'crashed': 0}
+
+=== pg_handrolled_triggers: adversarial replay ===
+[pg_handrolled_triggers] totals: {'system': 'pg_handrolled_triggers', 'total': 100, 'caught_at_write_time': 70, 'missed_silently': 0, 'crashed': 0}
+
+=== kndb: throughput (10000 rows x 10 reps) ===
+[kndb] p50=68.3us p95=91.1us p99=146.6us thru=13150.4 rps
+
+=== pg_handrolled_triggers: throughput (10000 rows x 10 reps) ===
+[pg_handrolled_triggers] p50=59.6us p95=80.7us p99=157.0us thru=14912.3 rps
+
+Done. See /Users/venky/Development/papers/kndb/bench/results

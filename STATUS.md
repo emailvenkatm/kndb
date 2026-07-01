@@ -24,9 +24,20 @@ Ran end-to-end on `docker compose exec kndb-postgres`. Reproducible via `bash de
 - **Attack scenario:** picked `entity_id=-2147475695` (patient with no HbA1c observation), attempted to slot a 7.2 model-imputed value as `epistemic_kind='inference'` into the `hba1c` slot registered as observation-required. **KNDB rejected at write time with `R5` — payload NOT stored**. Plain Postgres would have accepted the same write silently (baseline in the old `demo/demo.sh`).
 - **Progressive depth on 550k-row DB:** obs 544,349 → +inf 549,348 → +der 565,587 (monotone recall).
 
-## Still in progress or known gap
+## Native benchmark (2026-07-01, ARM64, no emulation)
 
-- **Absolute latency numbers** — everything measured so far ran under **OrbStack amd64 emulation**. Native ARM64 install SUCCEEDED (port 5434); native benchmark run currently in progress. Until it finishes, quote only RELATIVE comparisons.
+Ran on Apple Silicon (arm64) natively. Postgres 17.10 (Homebrew) + ProvSQL 1.10.0 built from v1.10.0 source on the same machine. Full manifest at `bench/results/native/manifest.json`.
+
+| System | p50 (μs) | p95 (μs) | p99 (μs) | rows/sec |
+|---|---:|---:|---:|---:|
+| kndb (native) | **68.3** | 91.1 | 146.6 | **13,150** |
+| pg_handrolled_triggers (native) | **59.6** | 80.7 | 157.0 | **14,912** |
+
+- **Native is 14.5× faster than emulated** for kndb (68 μs vs 990 μs p50).
+- **KNDB overhead vs steelman: 14.6% on p50, 12% on throughput** (both within noise on p99). This is the paper's honest overhead number.
+- **Correctness numbers identical** to emulated (arch-independent): kndb + handrolled 100/100 exact Viterbi; kndb + handrolled catch 70/70 adversarial; naive 0/70; py_guards 30/70.
+
+## Still in progress or known gap
 - **Concurrent-write safety** — no test hits the triggers from two sessions at once. Cannot claim race-free behavior for the reject policy.
 - **Autonomous-transaction audit** — rejected writes disappear on rollback per DECISIONS.md 2026-07-01. Documented limitation, not fixed.
 
@@ -43,11 +54,12 @@ Ran end-to-end on `docker compose exec kndb-postgres`. Reproducible via `bash de
 - "KNDB catches every one of the 70 adversarial writes; naive Postgres catches zero; application-layer guards catch 30."
 - "A hand-rolled trigger suite (steelman baseline) matches KNDB's write-time correctness in 124 lines of PL/pgSQL vs 150 in KNDB. The steelman does not implement Viterbi propagation; KNDB does."
 - "KNDB and the steelman achieve identical joined confidence on 100 inner-join chains (drift ~ floating-point noise). Naive Postgres and Python guards drift 0.21 on average using the industry-standard `MIN(confidence)` proxy."
+- "On native ARM64 (Postgres 17.10 + ProvSQL 1.10.0 built from source), KNDB p50 write latency is 68.3 μs and throughput 13,150 rows/sec. The hand-rolled steelman is 14.6% faster at p50 (59.6 μs, 14,912 rps) — the honest overhead of generic engine-enforced primitives above bespoke triggers."
 - "Loaded 11,637 Synthea patients producing 544,349 observations, 4,999 inferences, 16,239 derived aggregates. Trial T2DM-06 screening yields 492 obs-based eligible patients and rejects a model-output masquerading as a lab measurement at write time (R5)."
 - "CI is green on a hosted GitHub Actions runner in 1m57s (see `.github/workflows/ci.yml`, run 28507827663)."
 
 **Do NOT write, yet:**
-- Absolute latency in μs (emulation caveat until native run completes; native run is currently in flight).
+- Adversarial catch rate specifically on the 565k-row Synthea-preloaded DB (G2.3 in flight; expected identical to empty-DB and near-identical p50 since kndb.fact has good indexes).
 
 ## Update log
 
