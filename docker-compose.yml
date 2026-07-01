@@ -4,7 +4,7 @@
 
 services:
   kndb-postgres:
-    image: inriavalda/provsql:1.10.0
+    image: inriavalda/provsql:1.10.0@sha256:902023e556a49583eb650665183f3ff48c6623284d601c40788cb8401e682e06
     platform: linux/amd64        # ProvSQL image is amd64-only; runs under emulation on ARM64 hosts.
     container_name: kndb-postgres
     environment:

@@ -1,8 +1,9 @@
 SHELL := /bin/bash
 DC     := docker compose
 PSQL   := $(DC) exec -T kndb-postgres psql -U kndb -d kndb -v ON_ERROR_STOP=1
+PSQL_PG:= $(DC) exec -T kndb-postgres psql -U postgres -v ON_ERROR_STOP=1
 
-.PHONY: help up down psql wait test smoke smoke-a smoke-b engine reset demo bench reproduce clean
+.PHONY: help up down psql wait test smoke smoke-a smoke-b engine reset demo bench reproduce clean bootstrap
 
 help:
 	@echo "KNDB targets:"
@@ -10,6 +11,7 @@ help:
 	@echo "  make down        stop containers"
 	@echo "  make psql        interactive psql shell"
 	@echo "  make wait        block until Postgres is ready"
+	@echo "  make bootstrap   create kndb role + db (idempotent)"
 	@echo "  make smoke       run M0 empirical smoke tests (A + B)"
 	@echo "  make engine      apply engine/*.sql to the DB"
 	@echo "  make test        run test suite"
@@ -22,6 +24,12 @@ help:
 up:
 	$(DC) up -d
 	@$(MAKE) --no-print-directory wait
+	@$(MAKE) --no-print-directory bootstrap
+
+bootstrap:
+	@echo "== bootstrap kndb role + db + provsql =="
+	@$(PSQL_PG) -f /kndb-engine/bootstrap.sql
+	@$(PSQL) -c "CREATE EXTENSION IF NOT EXISTS provsql CASCADE; ALTER DATABASE kndb SET search_path = \"\$$user\", public, provsql;"
 
 down:
 	$(DC) down

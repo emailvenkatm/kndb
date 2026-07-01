@@ -27,7 +27,7 @@ via a BEFORE-INSERT/UPDATE trigger. Rows typed `derived` must carry a
 non-empty `sources uuid[]` and each source UUID must resolve to an existing
 fact — a second trigger enforces referential integrity across the array. The
 type distinction is engine-visible so downstream primitives (2, 5) can branch
-on it. See `engine/01_types.sql:1-45` and `engine/02_triggers_epistemic.sql:1-90`.
+on it. See `engine/01_types.sql`, `engine/02_facts_schema.sql`, and `engine/03_triggers_epistemic.sql`.
 
 **2. Confidence propagation.** Rows are annotated in ProvSQL's Viterbi
 m-semiring. A join between a 0.9-confidence observation and a 0.6-confidence
@@ -36,7 +36,7 @@ provenance multiplication, not by app code walking the result set. The
 `kndb.confidence(row)` view exposes the propagated value. The choice of Viterbi
 (as opposed to product-t-norm or Łukasiewicz) is a decision, not a fact — it
 picks the highest-probability derivation path, which matches the "one canonical
-answer" semantics users of a database expect. See `engine/06_provsql_setup.sql:1-60`.
+answer" semantics users of a database expect. See `engine/06_provsql_setup.sql`. Note: ProvSQL's `probability_evaluate` on LEFT JOIN materializes possible-worlds tuples; KNDB surfaces the per-row `confidence` column for regular queries and uses `sr_viterbi(provenance(), weights_tbl)` in explicit propagation queries. See `DECISIONS.md` (2026-07-01 M0 semantics finding).
 
 **3. Write-time conflict resolution.** When a new fact contradicts an existing
 fact on the same entity with overlapping valid-time, a BEFORE-INSERT trigger
@@ -44,7 +44,7 @@ either (a) trims the incumbent's `valid_time` and inserts the new row, or
 (b) rejects the new row, depending on a per-table `conflict_policy` setting.
 The loser is copied into `kndb_audit` with a reason string. Silent
 overwrites are not possible under any policy — that is the invariant. See
-`engine/03_triggers_conflict.sql:1-110`.
+`engine/04_triggers_conflict.sql`. Reject-policy audit persistence needs an autonomous transaction; scoped-out with a documented limitation.
 
 **4. Bitemporal validity.** Every fact carries `valid_time tstzrange` (when
 the world was in that state) and `sys_time tstzrange` (when we recorded it).
@@ -52,14 +52,14 @@ A GiST `EXCLUDE` constraint on `(entity_id WITH =, valid_time WITH &&)` blocks
 overlapping-time facts at write time. "As of date X" queries are stock SQL.
 An empirical smoke test (M0) will confirm ProvSQL's hidden `provsql` column
 does not interfere with the GiST index; if it does, the fallback is an app-side
-two-stage insert. See `engine/04_bitemporal.sql:1-70`.
+two-stage insert. Smoke test B (2026-07-01) confirmed no interference. See `engine/02_facts_schema.sql` (storage) and `engine/05_bitemporal.sql` (as-of query surface).
 
 **5. Progressive depth.** A stored function `kndb.expand(entity_id, depth)`
 returns observations only at depth 0, adds inferences at depth 1, and adds
 derived aggregates at depth 2. Recall is monotonically non-decreasing in
 depth, and average confidence is monotonically non-increasing — these are
 tested invariants, not aspirations. Callers can trade recall for confidence
-without hand-rolling the join. See `engine/05_progressive_depth.sql:1-55`.
+without hand-rolling the join. See `engine/07_progressive_depth.sql`.
 
 ## Why enforcement in the engine, not the app
 

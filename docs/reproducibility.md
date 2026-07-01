@@ -9,7 +9,7 @@ not silently upgrade.
 | Item | Value |
 |---|---|
 | Container image | `inriavalda/provsql:1.10.0` |
-| Image digest | `sha256:__TO_FILL__` (pinned in `docker-compose.yml` after M0 smoke tests pass) |
+| Image digest | `sha256:902023e556a49583eb650665183f3ff48c6623284d601c40788cb8401e682e06` (pinned in `docker-compose.yml` after M0 smoke tests pass) |
 | Postgres version | 17.x (whatever the pinned image ships) |
 | ProvSQL version | 1.10.0 |
 | Host platform | Linux amd64 preferred; ARM64 via Docker/OrbStack amd64 emulation supported (see caveat below) |
@@ -29,7 +29,7 @@ make reproduce
 This target:
 
 1. Pulls the pinned image and verifies the digest matches
-   `sha256:__TO_FILL__`. Aborts if it does not.
+   `sha256:902023e556a49583eb650665183f3ff48c6623284d601c40788cb8401e682e06`. Aborts if it does not.
 2. Starts the isolated stack on `kndb-net`, port 5433.
 3. Applies `engine/*.sql`.
 4. Regenerates 10k Synthea patients (seed 42) and loads them.
