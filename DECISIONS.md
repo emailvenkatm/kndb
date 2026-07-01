@@ -4,6 +4,39 @@ Running log of concrete decisions made during KNDB construction. Newest at the t
 
 ---
 
+## 2026-07-01 — M0 smoke tests PASS with API and semantic corrections
+
+- **Smoke A PASS (with finding).** `probability_evaluate()` on a LEFT JOIN
+  under ProvSQL v1.10.0 materializes *possible-worlds tuples*: patient 1's row
+  becomes `(matched, 0.665)` AND `(unmatched, 0.285 = 0.95 * (1 - 0.7))`. This
+  is semantically correct for a probabilistic database but not what a KNDB
+  user-facing query wants ("give me the row's confidence, don't split it into
+  possible worlds").
+- **Decision:** KNDB user-facing queries surface the per-row `confidence`
+  column directly. ProvSQL semiring evaluation (`sr_viterbi`, `probability_evaluate`)
+  is used only in the explicit *confidence-propagation demo query* in M2 and
+  M5, where the possible-worlds output is honestly presented as an option the
+  engine offers — not as the default row shape. This matches the paper's
+  narrower thesis (engine-level epistemic-kind + engine-computed propagation
+  when explicitly asked, not global replacement of relational semantics).
+- **Smoke B PASS.** `add_provenance('t'::regclass)` cooperates with
+  `EXCLUDE USING gist (int WITH =, tstzrange WITH &&)` both before and after
+  activation. `provsql` column is auto-populated on INSERT (no manual gate
+  creation). Bitemporal primitive is unblocked.
+- **API correction:** the ProvSQL API in v1.10.0 requires `add_provenance`'s
+  argument to be `regclass` (either `'schema.tbl'::regclass` or an unquoted
+  identifier), and uses `set_prob(uuid, float8)` + `sr_viterbi(token, weights_tbl)`,
+  not the earlier `provenance_token`/`set_prob_semiring` names. Engine files
+  and tests updated accordingly.
+
+## 2026-07-01 — M5 data prep: pinned Synthea v4.0.0 (SHA256 verified)
+
+- **Pin:** Synthea `v4.0.0`, released 2026-03-05. Asset `synthea-with-dependencies.jar`, SHA256 `ed43c20ad40ba5c3bc724503a5af032715fe3c491620b766148e7c2361e6ecc1`.
+- **Deliberately not** tracking the rolling `master-branch-latest` tag (also updated 2026-06-30). Reproducibility over recency: a tagged release is the only build we can rebuild against in 6 months.
+- **Licence:** Apache 2.0, matches ours. JAR downloaded at runtime by `data/generate.sh`, not vendored (avoids re-distributing a 197 MB binary).
+- **Label synthesis:** Synthea emits everything as FHIR Observations. The `observation | inference | derived` split is synthesized by `data/synthesize_labels.py`, seed 42, deterministic. This is disclosed in `data/README.md` — the paper claim is about engine enforcement of the three-way kind, not about detecting the kind post-hoc from raw EHR data.
+- **Staging-only load:** `data/load_postgres.sh` writes to `stage.*`, not `kndb.*`. Kept unconstrained so the M1 engine agent's typed triggers are the ones enforcing invariants, not the staging schema.
+
 ## 2026-07-01 — M0 opened, ProvSQL image is amd64-only
 
 - **Finding:** `inriavalda/provsql:1.10.0` on Docker Hub publishes **amd64 only** (verified via Docker Hub tags API). No ARM64 manifest.
