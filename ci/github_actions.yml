@@ -1,0 +1,88 @@
+# KNDB CI. Move to .github/workflows/ci.yml to activate on a real GitHub host.
+# Kept under ci/ so the repo works offline and the file is reviewable in the PR.
+
+name: kndb-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke-and-tests:
+    runs-on: ubuntu-24.04
+
+    services:
+      kndb-postgres:
+        image: inriavalda/provsql:1.10.0@sha256:902023e556a49583eb650665183f3ff48c6623284d601c40788cb8401e682e06
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: bootstrap kndb role + db + extension
+        run: |
+          PGCONN="host=127.0.0.1 port=5433 user=postgres dbname=postgres"
+          psql "$PGCONN" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='kndb') THEN
+              CREATE ROLE kndb LOGIN SUPERUSER PASSWORD 'kndb';
+            END IF;
+          END $$;
+          SELECT 'CREATE DATABASE kndb OWNER kndb'
+          WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname='kndb')
+          \gexec
+          SQL
+          KDBCONN="host=127.0.0.1 port=5433 user=kndb dbname=kndb"
+          psql "$KDBCONN" -v ON_ERROR_STOP=1 \
+            -c "CREATE EXTENSION provsql CASCADE; ALTER DATABASE kndb SET search_path = \"\$user\", public, provsql;"
+
+      - name: apply engine/*.sql
+        run: |
+          KDBCONN="host=127.0.0.1 port=5433 user=kndb dbname=kndb"
+          for f in engine/00_extensions.sql engine/01_types.sql engine/02_facts_schema.sql \
+                   engine/03_triggers_epistemic.sql engine/04_triggers_conflict.sql \
+                   engine/05_bitemporal.sql engine/06_provsql_setup.sql \
+                   engine/07_progressive_depth.sql; do
+            echo "== apply $f =="
+            psql "$KDBCONN" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: M0 smoke A + B
+        run: |
+          KDBCONN="host=127.0.0.1 port=5433 user=kndb dbname=kndb"
+          psql "$KDBCONN" -v ON_ERROR_STOP=1 -f tests/smoke_a_viterbi_leftjoin.sql
+          psql "$KDBCONN" -v ON_ERROR_STOP=1 -f tests/smoke_b_gist_provsql.sql
+
+      - name: engine tests
+        run: |
+          KDBCONN="host=127.0.0.1 port=5433 user=kndb dbname=kndb"
+          for f in tests/engine_enforces_epistemic_type.sql \
+                   tests/engine_enforces_conflict.sql \
+                   tests/confidence_propagation.sql \
+                   tests/bitemporal_asof.sql \
+                   tests/progressive_depth.sql; do
+            echo "== test $f =="
+            psql "$KDBCONN" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: verify no FAIL in test output
+        if: always()
+        run: |
+          KDBCONN="host=127.0.0.1 port=5433 user=kndb dbname=kndb"
+          for f in tests/engine_enforces_epistemic_type.sql \
+                   tests/engine_enforces_conflict.sql \
+                   tests/confidence_propagation.sql \
+                   tests/bitemporal_asof.sql \
+                   tests/progressive_depth.sql; do
+            if psql "$KDBCONN" -f "$f" 2>&1 | grep -E "^psql:.*ERROR|^FAIL "; then
+              echo "TEST FAIL in $f" && exit 1
+            fi
+          done

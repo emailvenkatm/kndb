@@ -1,0 +1,5 @@
+system,total,caught_at_write_time,missed_silently,crashed
+kndb,100,70,0,0
+pg_naive,100,0,70,0
+py_guards,100,30,40,0
+pg_handrolled_triggers,100,70,0,0

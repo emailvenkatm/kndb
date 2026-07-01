@@ -1,0 +1,13 @@
+{
+  "seed": 42,
+  "dsn": "postgresql://kndb:kndb@localhost:5433/kndb",
+  "systems": [
+    "kndb",
+    "pg_naive",
+    "py_guards",
+    "pg_handrolled_triggers"
+  ],
+  "rows_tp": 500,
+  "reps_tp": 2,
+  "run_at": "2026-07-01T05:32:55.106094+00:00"
+}

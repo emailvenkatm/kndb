@@ -1,0 +1,101 @@
+system,id,bucket,reason,should_be_rejected,outcome,error_class,error_msg
+py_guards,0,epistemic_kind,inference_into_obs_slot,True,caught,GuardRejection,"attribute 'hba1c' is registered as 'observation', got 'inference' (mirrors KNDB R5)"
+py_guards,1,epistemic_kind,inference_into_obs_slot,True,caught,GuardRejection,"attribute 'hba1c' is registered as 'observation', got 'inference' (mirrors KNDB R5)"
+py_guards,2,epistemic_kind,inference_into_obs_slot,True,caught,GuardRejection,"attribute 'hba1c' is registered as 'observation', got 'inference' (mirrors KNDB R5)"
+py_guards,3,epistemic_kind,inference_into_obs_slot,True,caught,GuardRejection,"attribute 'hba1c' is registered as 'observation', got 'inference' (mirrors KNDB R5)"
+py_guards,4,epistemic_kind,inference_into_obs_slot,True,caught,GuardRejection,"attribute 'hba1c' is registered as 'observation', got 'inference' (mirrors KNDB R5)"
+py_guards,5,epistemic_kind,derived_no_sources,True,caught,GuardRejection,derived fact must reference >=1 source (mirrors KNDB R1)
+py_guards,6,epistemic_kind,derived_no_sources,True,caught,GuardRejection,derived fact must reference >=1 source (mirrors KNDB R1)
+py_guards,7,epistemic_kind,derived_no_sources,True,caught,GuardRejection,derived fact must reference >=1 source (mirrors KNDB R1)
+py_guards,8,epistemic_kind,derived_no_sources,True,caught,GuardRejection,derived fact must reference >=1 source (mirrors KNDB R1)
+py_guards,9,epistemic_kind,observation_with_sources,True,caught,GuardRejection,observation cannot carry sources (mirrors KNDB R3)
+py_guards,10,epistemic_kind,observation_with_sources,True,caught,GuardRejection,observation cannot carry sources (mirrors KNDB R3)
+py_guards,11,epistemic_kind,observation_with_sources,True,caught,GuardRejection,observation cannot carry sources (mirrors KNDB R3)
+py_guards,12,epistemic_kind,observation_with_sources,True,caught,GuardRejection,observation cannot carry sources (mirrors KNDB R3)
+py_guards,13,epistemic_kind,inference_certain,True,caught,GuardRejection,inference cannot have confidence >= 1.0 (mirrors KNDB R4)
+py_guards,14,epistemic_kind,inference_certain,True,caught,GuardRejection,inference cannot have confidence >= 1.0 (mirrors KNDB R4)
+py_guards,15,epistemic_kind,inference_certain,True,caught,GuardRejection,inference cannot have confidence >= 1.0 (mirrors KNDB R4)
+py_guards,16,epistemic_kind,inference_certain,True,caught,GuardRejection,inference cannot have confidence >= 1.0 (mirrors KNDB R4)
+py_guards,17,epistemic_kind,obs_into_inference_slot,True,caught,GuardRejection,"attribute 'is_diabetic' is registered as 'inference', got 'observation' (mirrors KNDB R5)"
+py_guards,18,epistemic_kind,obs_into_inference_slot,True,caught,GuardRejection,"attribute 'is_diabetic' is registered as 'inference', got 'observation' (mirrors KNDB R5)"
+py_guards,19,epistemic_kind,obs_into_inference_slot,True,caught,GuardRejection,"attribute 'is_diabetic' is registered as 'inference', got 'observation' (mirrors KNDB R5)"
+py_guards,20,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,21,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,22,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,23,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,24,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,25,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,26,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,27,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,28,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,29,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,30,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,31,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,32,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,33,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,34,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,35,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,36,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,37,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,38,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,39,conflict,contradicting_overlap_reject_policy,True,missed,,
+py_guards,40,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,41,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,42,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,43,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,44,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,45,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,46,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,47,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,48,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,49,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,50,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,51,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,52,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,53,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,54,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,55,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,56,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,57,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,58,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,59,confidence,joint_confidence_target,False,landed_ok,,
+py_guards,60,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,61,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,62,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,63,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,64,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,65,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,66,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,67,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,68,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,69,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,70,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,71,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,72,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,73,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,74,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,75,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,76,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,77,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,78,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,79,bitemporal,overlap_diff_value_same_entity_attr,True,missed,,
+py_guards,80,progressive,legal_derived_with_source,False,landed_ok,,
+py_guards,81,progressive,legal_derived_with_source,False,landed_ok,,
+py_guards,82,progressive,legal_derived_with_source,False,landed_ok,,
+py_guards,83,progressive,legal_derived_with_source,False,landed_ok,,
+py_guards,84,progressive,legal_derived_with_source,False,landed_ok,,
+py_guards,85,progressive,legal_derived_with_source,False,landed_ok,,
+py_guards,86,progressive,legal_derived_with_source,False,landed_ok,,
+py_guards,87,progressive,legal_derived_with_source,False,landed_ok,,
+py_guards,88,progressive,legal_derived_with_source,False,landed_ok,,
+py_guards,89,progressive,legal_derived_with_source,False,landed_ok,,
+py_guards,90,progressive,derived_masquerading_as_obs,True,caught,GuardRejection,observation cannot carry sources (mirrors KNDB R3)
+py_guards,91,progressive,derived_masquerading_as_obs,True,caught,GuardRejection,observation cannot carry sources (mirrors KNDB R3)
+py_guards,92,progressive,derived_masquerading_as_obs,True,caught,GuardRejection,observation cannot carry sources (mirrors KNDB R3)
+py_guards,93,progressive,derived_masquerading_as_obs,True,caught,GuardRejection,observation cannot carry sources (mirrors KNDB R3)
+py_guards,94,progressive,derived_masquerading_as_obs,True,caught,GuardRejection,observation cannot carry sources (mirrors KNDB R3)
+py_guards,95,progressive,derived_masquerading_as_obs,True,caught,GuardRejection,observation cannot carry sources (mirrors KNDB R3)
+py_guards,96,progressive,derived_masquerading_as_obs,True,caught,GuardRejection,observation cannot carry sources (mirrors KNDB R3)
+py_guards,97,progressive,derived_masquerading_as_obs,True,caught,GuardRejection,observation cannot carry sources (mirrors KNDB R3)
+py_guards,98,progressive,derived_masquerading_as_obs,True,caught,GuardRejection,observation cannot carry sources (mirrors KNDB R3)
+py_guards,99,progressive,derived_masquerading_as_obs,True,caught,GuardRejection,observation cannot carry sources (mirrors KNDB R3)

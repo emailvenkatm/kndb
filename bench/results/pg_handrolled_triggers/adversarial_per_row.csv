@@ -1,0 +1,101 @@
+system,id,bucket,reason,should_be_rejected,outcome,error_class,error_msg
+pg_handrolled_triggers,0,epistemic_kind,inference_into_obs_slot,True,caught,CheckViolation,"B2 R5: attribute hba1c is registered as observation, got inference"
+pg_handrolled_triggers,1,epistemic_kind,inference_into_obs_slot,True,caught,CheckViolation,"B2 R5: attribute hba1c is registered as observation, got inference"
+pg_handrolled_triggers,2,epistemic_kind,inference_into_obs_slot,True,caught,CheckViolation,"B2 R5: attribute hba1c is registered as observation, got inference"
+pg_handrolled_triggers,3,epistemic_kind,inference_into_obs_slot,True,caught,CheckViolation,"B2 R5: attribute hba1c is registered as observation, got inference"
+pg_handrolled_triggers,4,epistemic_kind,inference_into_obs_slot,True,caught,CheckViolation,"B2 R5: attribute hba1c is registered as observation, got inference"
+pg_handrolled_triggers,5,epistemic_kind,derived_no_sources,True,caught,CheckViolation,B2 R1: derived fact for attribute agg_metric_0 has no sources
+pg_handrolled_triggers,6,epistemic_kind,derived_no_sources,True,caught,CheckViolation,B2 R1: derived fact for attribute agg_metric_1 has no sources
+pg_handrolled_triggers,7,epistemic_kind,derived_no_sources,True,caught,CheckViolation,B2 R1: derived fact for attribute agg_metric_2 has no sources
+pg_handrolled_triggers,8,epistemic_kind,derived_no_sources,True,caught,CheckViolation,B2 R1: derived fact for attribute agg_metric_3 has no sources
+pg_handrolled_triggers,9,epistemic_kind,observation_with_sources,True,caught,ForeignKeyViolation,B2 R2: 1 source(s) do not resolve
+pg_handrolled_triggers,10,epistemic_kind,observation_with_sources,True,caught,ForeignKeyViolation,B2 R2: 1 source(s) do not resolve
+pg_handrolled_triggers,11,epistemic_kind,observation_with_sources,True,caught,ForeignKeyViolation,B2 R2: 1 source(s) do not resolve
+pg_handrolled_triggers,12,epistemic_kind,observation_with_sources,True,caught,ForeignKeyViolation,B2 R2: 1 source(s) do not resolve
+pg_handrolled_triggers,13,epistemic_kind,inference_certain,True,caught,CheckViolation,B2 R4: inference cannot claim certainty
+pg_handrolled_triggers,14,epistemic_kind,inference_certain,True,caught,CheckViolation,B2 R4: inference cannot claim certainty
+pg_handrolled_triggers,15,epistemic_kind,inference_certain,True,caught,CheckViolation,B2 R4: inference cannot claim certainty
+pg_handrolled_triggers,16,epistemic_kind,inference_certain,True,caught,CheckViolation,B2 R4: inference cannot claim certainty
+pg_handrolled_triggers,17,epistemic_kind,obs_into_inference_slot,True,caught,CheckViolation,"B2 R5: attribute is_diabetic is registered as inference, got observation"
+pg_handrolled_triggers,18,epistemic_kind,obs_into_inference_slot,True,caught,CheckViolation,"B2 R5: attribute is_diabetic is registered as inference, got observation"
+pg_handrolled_triggers,19,epistemic_kind,obs_into_inference_slot,True,caught,CheckViolation,"B2 R5: attribute is_diabetic is registered as inference, got observation"
+pg_handrolled_triggers,20,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2000 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,21,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2001 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,22,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2002 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,23,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2003 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,24,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2004 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,25,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2005 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,26,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2006 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,27,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2007 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,28,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2008 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,29,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2009 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,30,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2010 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,31,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2011 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,32,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2012 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,33,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2013 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,34,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2014 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,35,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2015 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,36,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2016 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,37,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2017 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,38,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2018 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,39,conflict,contradicting_overlap_reject_policy,True,caught,CheckViolation,B2 conflict: attribute bp_systolic on entity 2019 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,40,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,41,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,42,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,43,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,44,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,45,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,46,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,47,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,48,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,49,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,50,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,51,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,52,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,53,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,54,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,55,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,56,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,57,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,58,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,59,confidence,joint_confidence_target,False,landed_ok,,
+pg_handrolled_triggers,60,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4000 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,61,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4001 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,62,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4002 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,63,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4003 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,64,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4004 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,65,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4005 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,66,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4006 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,67,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4007 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,68,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4008 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,69,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4009 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,70,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4010 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,71,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4011 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,72,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4012 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,73,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4013 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,74,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4014 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,75,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4015 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,76,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4016 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,77,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4017 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,78,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4018 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,79,bitemporal,overlap_diff_value_same_entity_attr,True,caught,CheckViolation,B2 conflict: attribute temp_c on entity 4019 contradicts prior fact (policy=reject)
+pg_handrolled_triggers,80,progressive,legal_derived_with_source,False,landed_ok,,
+pg_handrolled_triggers,81,progressive,legal_derived_with_source,False,landed_ok,,
+pg_handrolled_triggers,82,progressive,legal_derived_with_source,False,landed_ok,,
+pg_handrolled_triggers,83,progressive,legal_derived_with_source,False,landed_ok,,
+pg_handrolled_triggers,84,progressive,legal_derived_with_source,False,landed_ok,,
+pg_handrolled_triggers,85,progressive,legal_derived_with_source,False,landed_ok,,
+pg_handrolled_triggers,86,progressive,legal_derived_with_source,False,landed_ok,,
+pg_handrolled_triggers,87,progressive,legal_derived_with_source,False,landed_ok,,
+pg_handrolled_triggers,88,progressive,legal_derived_with_source,False,landed_ok,,
+pg_handrolled_triggers,89,progressive,legal_derived_with_source,False,landed_ok,,
+pg_handrolled_triggers,90,progressive,derived_masquerading_as_obs,True,caught,CheckViolation,B2 R3: observation cannot have sources
+pg_handrolled_triggers,91,progressive,derived_masquerading_as_obs,True,caught,CheckViolation,B2 R3: observation cannot have sources
+pg_handrolled_triggers,92,progressive,derived_masquerading_as_obs,True,caught,CheckViolation,B2 R3: observation cannot have sources
+pg_handrolled_triggers,93,progressive,derived_masquerading_as_obs,True,caught,CheckViolation,B2 R3: observation cannot have sources
+pg_handrolled_triggers,94,progressive,derived_masquerading_as_obs,True,caught,CheckViolation,B2 R3: observation cannot have sources
+pg_handrolled_triggers,95,progressive,derived_masquerading_as_obs,True,caught,CheckViolation,B2 R3: observation cannot have sources
+pg_handrolled_triggers,96,progressive,derived_masquerading_as_obs,True,caught,CheckViolation,B2 R3: observation cannot have sources
+pg_handrolled_triggers,97,progressive,derived_masquerading_as_obs,True,caught,CheckViolation,B2 R3: observation cannot have sources
+pg_handrolled_triggers,98,progressive,derived_masquerading_as_obs,True,caught,CheckViolation,B2 R3: observation cannot have sources
+pg_handrolled_triggers,99,progressive,derived_masquerading_as_obs,True,caught,CheckViolation,B2 R3: observation cannot have sources
