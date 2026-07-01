@@ -4,6 +4,28 @@ Running log of concrete decisions made during KNDB construction. Newest at the t
 
 ---
 
+## 2026-07-01 — G3 CI verified green on a real GitHub-hosted runner
+
+- Private repo created: `emailvenkatm/kndb`.
+- Workflow moved to `.github/workflows/ci.yml` (canonical location). Kept a
+  copy at `ci/github_actions.yml` for reviewability.
+- First run **GREEN**, 1m 57s: all 15 sub-tests pass (both smoke tests + the
+  five primitive test files). Log link:
+  https://github.com/emailvenkatm/kndb/actions/runs/28507827663
+- Non-blocking annotation: `actions/checkout@v4` targets Node 20 (deprecated).
+  Cosmetic — no functional impact.
+
+## 2026-07-01 — G2 unblocked: native ProvSQL v1.10.0 on Apple Silicon (port 5434)
+
+- Native ARM64 install SUCCESS via Homebrew Postgres 17 + boost + `make install`
+  from ProvSQL v1.10.0 source. No sudo needed (Homebrew prefix is user-owned).
+- DSN: `postgresql://kndb_native:kndb_native@localhost:5434/kndb_native`.
+- Both smoke tests PASS natively (arm64), matching the emulated docker results.
+- Docker container `kndb-postgres` on port 5433 remains untouched — the two
+  installs are independent.
+- `bench/run_native.sh` staged to re-run the full benchmark against port 5434
+  once G1 data load completes.
+
 ## 2026-07-01 — M6 final numbers: KNDB and steelman tie on throughput (10-rep)
 
 - Re-ran throughput at the spec's 10k rows × 10 seed reps (previous 500 × 2

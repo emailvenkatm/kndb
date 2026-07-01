@@ -1,8 +1,6 @@
-# Data
-data/synthea/output/
-data/synthea/*.csv
-data/synthea/*.json
-data/synthea/*.ndjson
+# Data — Synthea artefacts are regenerable from data/generate.sh (SHA256 verified).
+# Do not commit: JAR (~200MB), raw Synthea output (~7GB), KNDB-shaped CSVs (~50MB).
+data/synthea/
 
 # Benchmark artifacts
 bench/results/*.raw
