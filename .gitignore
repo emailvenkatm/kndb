@@ -1,0 +1,31 @@
+# Data
+data/synthea/output/
+data/synthea/*.csv
+data/synthea/*.json
+data/synthea/*.ndjson
+
+# Benchmark artifacts
+bench/results/*.raw
+bench/results/*/*.raw
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.uv-cache/
+uv.lock
+
+# Postgres
+*.pgdata
+pgdata/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Secrets — never commit
+.env
+*.pem
+*.key

@@ -1,0 +1,35 @@
+# KNDB — isolated Postgres + ProvSQL stack.
+# Isolation contract: dedicated network, kndb-* container names, port 5433 (not 5432).
+# Must NOT collide with voicelane-falkordb or any other project's containers.
+
+services:
+  kndb-postgres:
+    image: inriavalda/provsql:1.10.0
+    platform: linux/amd64        # ProvSQL image is amd64-only; runs under emulation on ARM64 hosts.
+    container_name: kndb-postgres
+    environment:
+      POSTGRES_PASSWORD: kndb
+      POSTGRES_USER: kndb
+      POSTGRES_DB: kndb
+    ports:
+      - "5433:5432"              # non-default host port, avoids clashing with any local PG.
+    volumes:
+      - kndb-pgdata:/var/lib/postgresql/data
+      - ./engine:/kndb-engine:ro
+      - ./tests:/kndb-tests:ro
+    networks:
+      - kndb-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kndb -d kndb"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+networks:
+  kndb-net:
+    name: kndb-net
+    driver: bridge
+
+volumes:
+  kndb-pgdata:
+    name: kndb-pgdata
