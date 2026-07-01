@@ -4,6 +4,23 @@ Running log of concrete decisions made during KNDB construction. Newest at the t
 
 ---
 
+## 2026-07-01 — M6 final numbers: KNDB and steelman tie on throughput (10-rep)
+
+- Re-ran throughput at the spec's 10k rows × 10 seed reps (previous 500 × 2
+  reps was too noisy). New numbers: kndb p50 ~990μs vs pg_handrolled_triggers
+  p50 ~974μs — within noise. Earlier "40% slower" claim was a 2-rep artifact.
+- **Paper narrative correction:** KNDB does NOT pay a meaningful throughput
+  penalty vs a hand-rolled trigger suite that reimplements the same
+  primitives. What KNDB gives you at the same cost is: (a) the primitives
+  as a coherent, tested package, (b) Viterbi confidence propagation
+  primitive 2 which the steelman does NOT implement, (c) the LOC-per-project
+  savings.
+- Correctness untouched: kndb + steelman both 70/70 caught + 100/100 exact
+  Viterbi match on inner-join chains; naive and py_guards 0.21 mean drift.
+- Adversarial catch reported honestly. `py_guards` catches 30/70 exactly as
+  designed (epistemic-kind + progressive-R3-shaped, misses conflict + bitemporal
+  because Python guards can't enforce atomicity).
+
 ## 2026-07-01 — M0 smoke tests PASS with API and semantic corrections
 
 - **Smoke A PASS (with finding).** `probability_evaluate()` on a LEFT JOIN

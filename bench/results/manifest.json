@@ -7,7 +7,7 @@
     "py_guards",
     "pg_handrolled_triggers"
   ],
-  "rows_tp": 500,
-  "reps_tp": 2,
-  "run_at": "2026-07-01T05:32:55.106094+00:00"
+  "rows_tp": 10000,
+  "reps_tp": 10,
+  "run_at": "2026-07-01T05:39:54.788487+00:00"
 }

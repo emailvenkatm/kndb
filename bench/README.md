@@ -1,96 +1,181 @@
-# KNDB benchmark harness
+# KNDB Benchmark Harness (M6)
 
-Honest measurements of what engine-enforced trust primitives cost, and what
-happens without them. Every number here is regenerable from a fresh `make up`
-via `python3 bench/run.py` — no fabricated results.
+Honest measurements for the CIDR 2027 submission. **No fabricated numbers.**
+Any missing measurement is reported as missing, not extrapolated.
 
-## What is measured
+## What this measures
 
-Four systems, one adversarial workload, three lenses.
+Four systems are compared:
 
-### Systems
+| Key                       | What it is                                                     |
+|---------------------------|----------------------------------------------------------------|
+| `kndb`                    | The engine we built. Postgres 17 + ProvSQL 1.10.0 + triggers. |
+| `pg_naive`                | Plain Postgres. No CHECK, no triggers, no exclusion.           |
+| `py_guards`               | Plain Postgres + a Python module in front of every write.      |
+| `pg_handrolled_triggers`  | **Steelman.** Plain Postgres with a hand-rolled trigger suite mirroring KNDB primitives 1, 3, 4, 5. Does not attempt primitive 2 (Viterbi propagation). |
 
-| System | Semantics | Guard code (LOC) |
-|---|---|---|
-| `kndb` | five engine-enforced primitives (obs/inf/derived typing, Viterbi propagation, write-time conflict, bitemporal, progressive depth) | 150 (`engine/03-07_*.sql`) |
-| `pg_naive` | plain Postgres, no enforcement | 0 |
-| `py_guards` | plain Postgres + Python-side validation before every write | 41 (`baselines/py_guards/guards.py`) |
-| `pg_handrolled_triggers` | plain Postgres + hand-rolled PL/pgSQL triggers reimplementing KNDB's guarantees (the steelman) | 124 (`baselines/pg_handrolled_triggers/schema.sql`) |
+Metrics reported:
 
-### Workload
-
-`bench/adversarial/writes.py` generates 100 payloads across five 20-payload buckets, seed 42:
-
-- epistemic-kind violations (inference into obs slot, derived with no sources, observation with sources, inference at conf=1.0, slot-kind mismatch)
-- conflict violations (contradicting facts, overlapping valid_time)
-- confidence-propagation targets (join patterns whose naive product diverges from closed-form Viterbi)
-- bitemporal violations (overlapping valid_time on same entity+attribute)
-- progressive-depth targets
-
-Each payload carries `should_be_rejected: bool`. A compliant system rejects every payload flagged `True` at write time. Non-adversarial (legitimate) writes are folded in as the complement of "adversarial" so all four systems land at the same total row count.
-
-### Lenses
-
-1. **Correctness — violations caught vs missed** (`bench/run.py`, table `summary_totals.csv`).
-2. **Confidence-propagation drift** — engine output vs closed-form on 100 join patterns (`bench/confidence_correctness.py`, table `confidence_summary.csv`).
-3. **LOC to match the guarantee** — non-blank, non-comment lines of each guard layer (`bench/loc.py`, table `loc.csv`).
-4. **Write throughput** — p50 / p95 / p99 latency and rows/sec on a 500-row valid-write workload, per seed (`bench/run.py`, per-system `throughput.csv`).
-
-## Observed numbers (2026-07-01, first run)
-
-| System | caught | missed_silently | crashed | LOC | mean confidence drift | exact matches |
-|---|---:|---:|---:|---:|---:|---:|
-| kndb | 70 | 0 | 0 | 150 | 1.7e-17 (fp noise) | 100/100 |
-| pg_naive | 0 | 70 | 0 | 0 | 0.21 | 0/100 |
-| py_guards | 30 | 40 | 0 | 41 | 0.21 | 0/100 |
-| pg_handrolled_triggers | 70 | 0 | 0 | 124 | 1.7e-17 (fp noise) | 100/100 |
-
-Throughput (mean over 2 reps of 500 rows on amd64-emulated OrbStack on Apple Silicon; **relative**, not absolute):
-
-| System | p50 (μs) | p95 (μs) | p99 (μs) | rows/sec |
-|---|---:|---:|---:|---:|
-| kndb | 1462 | 2865 | 4675 | 587 |
-| pg_handrolled_triggers | 795 | 1517 | 3653 | 985 |
-
-## What the numbers say (honest reading)
-
-- **The engine catches what apps miss.** `pg_naive` accepts every attack. `py_guards` catches 30/70 because the Python layer can enforce type-tag checks but cannot atomically enforce write-time conflict resolution or bitemporal no-overlap. This is the "app-layer is not tight" evidence.
-- **Confidence propagation cannot be reconstructed in the app.** `pg_naive` and `py_guards` both report `MIN(confidence)` as a naive proxy — the industry-standard ad-hoc heuristic — and drift 0.21 on average from closed-form Viterbi. Zero exact matches. This is the paper's headline: reconstructing "confidence" in the app silently produces different numbers depending on which team wrote it.
-- **The steelman ties on correctness.** `pg_handrolled_triggers` catches 70/70 and drifts by floating-point noise only. This is *expected and honest*: you can hand-roll KNDB's guarantees on top of ProvSQL in 124 LOC of PL/pgSQL. The paper's story is not "no one else can do this" — it is "here is what those primitives look like as a coherent, tested package once, so you don't reimplement them per project."
-- **KNDB pays ~40% latency vs. steelman.** 1462μs p50 vs 795μs. The overhead comes from the sync-provsql-prob AFTER trigger plus the more-general slot_kind registry lookup. The p99 gap is smaller. This is honestly reported; the paper will not claim KNDB is the fastest.
-- **Absolute latency numbers are amd64-emulated.** These numbers are on OrbStack running the ProvSQL amd64 image under emulation on ARM64. Native amd64 will be faster; the ratio between KNDB and the steelman should hold. See `DECISIONS.md` (2026-07-01).
+1. **Adversarial write catch rate** (`bench/adversarial/writes.py`) — 100
+   payloads across five buckets of 20 (epistemic-kind, conflict,
+   confidence, bitemporal, progressive-depth). Deterministic under seed 42.
+   Each payload has a `should_be_rejected` flag; the runner tallies
+   `caught_at_write_time`, `missed_silently`, `crashed`.
+2. **Confidence-propagation correctness** (`bench/confidence_correctness.py`)
+   — 100 chain patterns of length 2–4, closed-form Viterbi
+   (product-of-confidences) as ground truth, per-baseline drift.
+3. **Guard LOC** (`bench/loc.py`) — non-blank, non-comment lines of
+   guard code (triggers, guard functions, Python guards). Excludes schema
+   DDL, extension setup, and type declarations.
+4. **Write throughput** (`bench/run.py`) — 10 000 legal-observation
+   inserts per repetition, ≥10 seed repetitions, p50/p95/p99 per-row
+   latency + aggregate throughput. Measured only on `kndb` and
+   `pg_handrolled_triggers` — the two systems whose apples-to-apples
+   comparison is what the paper cares about.
 
 ## How to run
 
-Assumes `make up` has brought the container up and `make engine` has applied engine SQL.
+Prereqs: the KNDB docker-compose stack must already be up and healthy.
 
 ```bash
-python3 bench/run.py                       # correctness + throughput
-python3 bench/confidence_correctness.py    # drift vs closed-form Viterbi
-python3 bench/loc.py                       # guard-code LOC per baseline
-python3 bench/plots.py                     # PDFs + PNGs into results/figures/
+make up            # from repo root — starts kndb-postgres on port 5433
+make engine        # apply engine/*.sql (only needed if fresh volume)
 ```
 
-Results:
-- `bench/results/manifest.json` — seed, DSN, run timestamp, list of systems.
-- `bench/results/summary_totals.csv` — one row per system.
-- `bench/results/summary_per_row.csv` — one row per adversarial payload per system.
-- `bench/results/confidence_summary.csv` / `confidence_per_pattern.csv`.
-- `bench/results/loc.csv`.
-- `bench/results/<system>/adversarial_totals.csv`, `adversarial_per_row.csv`, `throughput.csv` (KNDB + steelman only for throughput).
-- `bench/results/figures/*.pdf` — paper-ready figures.
+Set up Python once:
 
-## Reproducibility
+```bash
+python3 -m venv bench/.venv
+bench/.venv/bin/pip install -r bench/requirements.txt
+```
 
-- Seed 42 hard-coded in `bench/adversarial/writes.py`.
-- Docker image pinned by SHA256 in `docker-compose.yml`.
-- Postgres 17.10, ProvSQL 1.10.0.
-- Python 3.11+; deps in `bench/requirements.txt`.
-- `bench/results/manifest.json` records seed, DSN, and run timestamp per invocation.
+Run the full harness:
 
-## Known limitations
+```bash
+bench/.venv/bin/python3 bench/run.py                     # adversarial + throughput
+bench/.venv/bin/python3 bench/confidence_correctness.py  # 100-chain confidence drift
+bench/.venv/bin/python3 bench/loc.py                     # guard LOC table
+bench/.venv/bin/python3 bench/plots.py                   # regenerate figures
+```
 
-- **Only 2 throughput reps** at first run — the ≥10-reps target from `plan.md` is set as the `--reps` flag in `run.py`; the numbers above will be re-measured with 10 reps before the paper's final revision.
-- **amd64 emulation on ARM64 hosts** inflates absolute latency. Paper tables will note whether numbers are native or emulated; the relative ratio is what matters.
-- **The steelman baseline uses ProvSQL** as the semiring engine and computes Viterbi via multiplied per-row confidence on inner joins. This is legitimate — it means "assume ProvSQL exists, hand-roll the rest." The paper is careful to state this so the LOC comparison is honest.
-- **Autonomous-transaction audit persistence** is out of scope for the reject policy; conflict-invalidate audit works as expected.
+Environment variables:
+
+- `KNDB_DSN` — override the DSN. Default `postgresql://kndb:kndb@localhost:5433/kndb`.
+- `KNDB_TP_ROWS` — throughput rows per rep. Default 10 000.
+- `KNDB_TP_REPS` — throughput seed reps. Default 10.
+
+## How to read results
+
+CSVs land in `bench/results/`:
+
+```
+results/
+  summary_totals.csv                  # one row per system: caught / missed / crashed
+  summary_per_row.csv                 # every adversarial write's outcome
+  loc.csv                             # LOC per system
+  confidence_summary.csv              # drift per system
+  confidence_per_pattern.csv          # per-chain closed-form vs. observed
+  manifest.json                       # seed, DSN, run timestamp
+  {system}/adversarial_totals.csv
+  {system}/adversarial_per_row.csv
+  {system}/throughput.csv             # kndb and pg_handrolled_triggers only
+  figures/                            # publication PNG + PDF pairs
+```
+
+## Honest limitations
+
+- **amd64 emulation on ARM64 hosts inflates absolute latencies by an
+  estimated 1.5-3x** versus native amd64. The ProvSQL 1.10.0 image ships
+  amd64 only; on Apple-silicon dev boxes (this one included) it runs
+  under Docker Desktop / OrbStack emulation. **The paper should report
+  RELATIVE overhead — KNDB vs. steelman — not absolute numbers.**
+- **10 seed reps is the low end of statistical honesty.** For the paper's
+  final numbers we recommend `KNDB_TP_REPS=30` on a native amd64 host and
+  reporting per-rep-mean quantiles. The CSV keeps every rep so you can
+  re-compute without re-running.
+- **Confidence-correctness is scoped to inner-join chains.** ProvSQL's
+  possible-worlds semantics on outer/mixed-kind joins (DECISIONS.md M0
+  smoke A) is surfaced honestly in the demo but not in this correctness
+  bench — the paper should present it as a separate qualitative claim.
+- **`py_guards` is deliberately incomplete.** See its module docstring;
+  the paper's point is that app-layer guards are loose by nature.
+  Do not "fix" the gaps.
+- **`pg_naive` catch = 0.** By construction — no CHECK, no triggers.
+  This is the floor, not a bug in the harness.
+- **The `crashed` bucket** counts non-KNDB errors AND over-rejection of
+  legal writes (a compliant write refused by an over-eager trigger).
+  All four systems report 0 for this bucket on the current run.
+
+## Observed numbers on this host
+
+Recorded 2026-07-01 on Apple-silicon under OrbStack amd64 emulation with
+`KNDB_TP_ROWS=10000 KNDB_TP_REPS=10`. Reproducible on the same host by
+re-running the commands above.
+
+### Adversarial writes (n = 100)
+
+| System                     | caught | missed | crashed |
+|----------------------------|-------:|-------:|--------:|
+| kndb                       |     70 |      0 |       0 |
+| pg_naive                   |      0 |     70 |       0 |
+| py_guards                  |     30 |     40 |       0 |
+| pg_handrolled_triggers     |     70 |      0 |       0 |
+
+Of the 100 payloads, 70 are `should_be_rejected=True` and 30 are legal
+targets (the `confidence` bucket + 10 legal `progressive` rows). A
+"perfect" system therefore lands 30 and rejects 70.
+
+The `py_guards` 30/40 split is the deliberate incompleteness: the
+guard layer catches epistemic-kind violations (20 rows) and R3-shaped
+progressive-depth violations (10 rows) but by design does not check
+for valid-time overlap on contradicting values (misses the 20 conflict
++ 20 bitemporal adversarials).
+
+### Confidence-propagation drift (100 chain patterns, length 2-4)
+
+| System                     | mean abs drift | max abs drift | exact matches |
+|----------------------------|---------------:|--------------:|--------------:|
+| kndb                       |       0.000000 |      0.000000 |       100/100 |
+| pg_naive                   |       0.210291 |      0.426117 |         0/100 |
+| py_guards                  |       0.210291 |      0.426117 |         0/100 |
+| pg_handrolled_triggers     |       0.000000 |      0.000000 |       100/100 |
+
+On this scope (inner-join chains, product-of-confidences ground truth)
+the steelman baseline matches KNDB exactly because the SQL in both
+systems is doing the same multiplication. The paper's claim on
+primitive 2 shifts to _mechanism_ (ProvSQL vs. a bespoke SQL join every
+app must write for itself, with correctness re-derived each time) rather
+than _numerical difference_ — and to the outer/mixed-kind case that this
+bench does not attempt to score.
+
+The two naive baselines' 0.21 mean drift comes from the common ad-hoc
+proxy `MIN(confidence)`, which is what app code typically writes when
+there is no propagation primitive available.
+
+### Guard LOC
+
+| System                     | LOC |
+|----------------------------|----:|
+| kndb                       | 150 |
+| pg_naive                   |   0 |
+| py_guards                  |  41 |
+| pg_handrolled_triggers     | 124 |
+
+The steelman is only 26 LOC lighter than KNDB. That is honest — the
+paper's argument is not "KNDB uses fewer lines", it is "those lines live
+in one enforced place instead of being reproduced in every app". The
+`py_guards` number (41) is misleading small: the guard file is small
+only because it is deliberately incomplete.
+
+### Write throughput (10 000 rows / rep, 10 seed reps, means over reps)
+
+| System                     | p50 (us) | p95 (us) | p99 (us) | throughput (rows/s) |
+|----------------------------|---------:|---------:|---------:|--------------------:|
+| kndb                       |    990.4 |   2079.5 |   3092.4 |               853.2 |
+| pg_handrolled_triggers     |    974.3 |   2359.9 |   3236.7 |               864.5 |
+
+KNDB is within noise of the steelman on this host (both are limited by
+amd64 emulation, single-threaded client, per-row autocommit). The paper
+should report this as "engine-enforced primitives cost roughly the same
+as hand-rolled triggers doing the same job", and cite RELATIVE overhead,
+not the absolute microsecond numbers, which are inflated by emulation.
