@@ -24,6 +24,20 @@ Ran end-to-end on `docker compose exec kndb-postgres`. Reproducible via `bash de
 - **Attack scenario:** picked `entity_id=-2147475695` (patient with no HbA1c observation), attempted to slot a 7.2 model-imputed value as `epistemic_kind='inference'` into the `hba1c` slot registered as observation-required. **KNDB rejected at write time with `R5` — payload NOT stored**. Plain Postgres would have accepted the same write silently (baseline in the old `demo/demo.sh`).
 - **Progressive depth on 550k-row DB:** obs 544,349 → +inf 549,348 → +der 565,587 (monotone recall).
 
+## Native benchmark on Synthea-preloaded DB (2026-07-01, ARM64, G2.3)
+
+Adversarial catch rate unchanged from empty-DB (as expected — index lookups):
+kndb 70/70, naive 0/70, py_guards 30/70, handrolled 70/70.
+
+Throughput at 565,587 preloaded rows (5000 rows × 10 reps, no truncate):
+
+| System | p50 (μs) | p99 (μs) | rows/sec | vs empty-DB throughput |
+|---|---:|---:|---:|---|
+| kndb | 70.4 | 155.6 | **5,597** | **58% loss** (from 13,150) |
+| pg_handrolled_triggers | 57.1 | 149.5 | **15,559** | unchanged (from 14,912) |
+
+**Finding:** KNDB's write cost scales with `log(|kndb.fact|)` because ProvSQL's `set_prob` traverses a token→probability map that grows with the table. The steelman doesn't implement Viterbi propagation and therefore doesn't call `set_prob` — its throughput is size-invariant. This is the honest cost of engine-computed confidence propagation vs a bespoke schema that skips it.
+
 ## Native benchmark (2026-07-01, ARM64, no emulation)
 
 Ran on Apple Silicon (arm64) natively. Postgres 17.10 (Homebrew) + ProvSQL 1.10.0 built from v1.10.0 source on the same machine. Full manifest at `bench/results/native/manifest.json`.
@@ -54,12 +68,13 @@ Ran on Apple Silicon (arm64) natively. Postgres 17.10 (Homebrew) + ProvSQL 1.10.
 - "KNDB catches every one of the 70 adversarial writes; naive Postgres catches zero; application-layer guards catch 30."
 - "A hand-rolled trigger suite (steelman baseline) matches KNDB's write-time correctness in 124 lines of PL/pgSQL vs 150 in KNDB. The steelman does not implement Viterbi propagation; KNDB does."
 - "KNDB and the steelman achieve identical joined confidence on 100 inner-join chains (drift ~ floating-point noise). Naive Postgres and Python guards drift 0.21 on average using the industry-standard `MIN(confidence)` proxy."
-- "On native ARM64 (Postgres 17.10 + ProvSQL 1.10.0 built from source), KNDB p50 write latency is 68.3 μs and throughput 13,150 rows/sec. The hand-rolled steelman is 14.6% faster at p50 (59.6 μs, 14,912 rps) — the honest overhead of generic engine-enforced primitives above bespoke triggers."
+- "On native ARM64 (Postgres 17.10 + ProvSQL 1.10.0 built from source, empty `kndb.fact`), KNDB p50 write latency is 68.3 μs and throughput 13,150 rows/sec. The hand-rolled steelman is 14.6% faster at p50 (59.6 μs, 14,912 rps) — the honest overhead of generic engine-enforced primitives above bespoke triggers."
+- "On the same native install with `kndb.fact` pre-loaded with 565,587 real Synthea rows, KNDB throughput drops to 5,597 rps while the steelman stays at 15,559 rps. Adversarial catch remains identical (70/70). The 2.8× write-throughput gap is the honest cost of ProvSQL's `set_prob` map growing with the table — a cost the steelman avoids by not implementing Viterbi propagation at all."
 - "Loaded 11,637 Synthea patients producing 544,349 observations, 4,999 inferences, 16,239 derived aggregates. Trial T2DM-06 screening yields 492 obs-based eligible patients and rejects a model-output masquerading as a lab measurement at write time (R5)."
 - "CI is green on a hosted GitHub Actions runner in 1m57s (see `.github/workflows/ci.yml`, run 28507827663)."
 
 **Do NOT write, yet:**
-- Adversarial catch rate specifically on the 565k-row Synthea-preloaded DB (G2.3 in flight; expected identical to empty-DB and near-identical p50 since kndb.fact has good indexes).
+- Concurrent-write race behavior (never measured under two-connection load; scoped as future work).
 
 ## Update log
 
@@ -69,3 +84,5 @@ Ran on Apple Silicon (arm64) natively. Postgres 17.10 (Homebrew) + ProvSQL 1.10.
 - 2026-07-01 04:35 — G3 CI verified GREEN on a hosted GitHub runner.
 - 2026-07-01 04:50 — docker clinical demo runs end-to-end on real Synthea; 550k fact rows, attack rejected, screening returns 2,495 candidates.
 - 2026-07-01 04:55 — native benchmark in progress (background); will land absolute-latency numbers.
+- 2026-07-01 05:00 — native benchmark COMPLETE on empty DB. KNDB 68μs p50, 13,150 rps. Steelman 60μs / 14,912 rps.
+- 2026-07-01 05:10 — G2.3 benchmark on 565k Synthea-preloaded DB COMPLETE. Adversarial catch identical (70/70); KNDB throughput 5,597 rps (58% loss due to ProvSQL set_prob scaling). Steelman unchanged. All three goals closed.

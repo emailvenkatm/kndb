@@ -15,6 +15,30 @@ Running log of concrete decisions made during KNDB construction. Newest at the t
 - Non-blocking annotation: `actions/checkout@v4` targets Node 20 (deprecated).
   Cosmetic — no functional impact.
 
+## 2026-07-01 — G2.3 finding: KNDB throughput degrades with DB size, steelman does not
+
+Ran `bench/run_synthea.sh` — same adversarial + throughput on `kndb.fact` PRE-LOADED with 565,587 real Synthea rows (`KNDB_PRESERVE_FACTS=1` in `run.py`).
+
+Adversarial catch on Synthea-loaded DB: kndb 70/100, naive 0/100, py_guards 30/100, handrolled 70/100 — **identical to empty DB**. Write-time enforcement is not sensitive to DB size (index-lookup fast).
+
+Throughput on Synthea-preloaded DB (5000 rows × 10 reps, no truncate):
+```
+kndb                    p50=70.4us  p95=114.8us  p99=155.6us  thru= 5,597 rps
+pg_handrolled_triggers  p50=57.1us  p95= 74.3us  p99=149.5us  thru=15,559 rps
+```
+
+Compared to empty-DB throughput (from `bench/results/native/manifest.json`):
+- kndb: 13,150 → 5,597 rps (**58% throughput loss at 565k rows**)
+- handrolled: 14,912 → 15,559 rps (~unchanged)
+
+**Interpretation.** KNDB's AFTER-INSERT trigger `kndb.sync_provsql_prob` calls `provsql.set_prob(token, confidence)` for every new row. ProvSQL internally maintains a token→probability map; that map already has 565k entries when Synthea is loaded, so each `set_prob` call is O(log n) instead of effectively O(1). The hand-rolled steelman doesn't call `set_prob` (it doesn't implement Viterbi propagation), so its throughput is size-invariant.
+
+This is **honest overhead for the primitives KNDB provides above the steelman**. The paper should say: KNDB's write cost scales with `log(|kndb.fact|)` due to ProvSQL, while a hand-rolled bespoke schema without Viterbi propagation stays flat. This is not a bug — it is the cost of engine-computed confidence propagation, and it is worth reporting.
+
+Not to change in the engine per user instruction ("Do NOT modify the engine SQL"). If a follow-up wants to reduce this, a statement-level batching trigger or a periodic `refresh_weights()`-only model would help, but is out of scope for the CIDR prototype.
+
+Full artifacts: `bench/results/native_synthea/{manifest.json,run_out.txt,preload_out.txt,kndb/,pg_handrolled_triggers/}`.
+
 ## 2026-07-01 — G2 native benchmark COMPLETE (arm64, no emulation)
 
 Absolute latency and throughput on native ARM64 Postgres 17.10 + ProvSQL
