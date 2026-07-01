@@ -1,0 +1,55 @@
+
+[1;36m== SETUP — a naive Postgres schema and the KNDB schema, side by side ==[0m
+  created demo_plain.labs (unconstrained), left kndb.fact typed.
+
+[1;36m== SCENE 1 — a model writes its guess into the labs column ==[0m
+  Story: a service pipeline uses a model to fill missing HbA1c values.
+  Nothing tells the DB that hba1c must be a real measurement.
+[1;33m-- 1a: naive Postgres accepts the model guess silently --[0m
+INSERT 0 1
+ patient_id | attribute | value 
+------------+-----------+-------
+         42 | hba1c     | 7.8
+(1 row)
+
+  → Postgres stored '7.8' as if the patient had been measured. Silently.
+[1;33m-- 1b: KNDB rejects the same write at write time --[0m
+ERROR:  KNDB R5: attribute hba1c is registered as observation, got inference
+HINT:  This is the primary trust-boundary check the paper demonstrates.
+CONTEXT:  PL/pgSQL function enforce_epistemic_kind() line 34 at RAISE
+  → ERROR 23514, rule R5: attribute hba1c is registered as observation, got inference.
+    Write refused BEFORE the row lands. Engine, not app code.
+
+[1;36m== SCENE 2 — the SAME model output, properly labeled, is accepted ==[0m
+INSERT 0 1
+INSERT 0 1
+ epistemic_kind |  attribute  | value | confidence |               provsql                
+----------------+-------------+-------+------------+--------------------------------------
+ observation    | hba1c       | 7.2   |    0.95000 | 0ed98c4d-238e-464f-9a75-66f95bdbea13
+ inference      | is_diabetic | true  |    0.70000 | f4b68082-98a0-4c30-9cdc-bb0122f2ebb7
+(2 rows)
+
+  → Same numbers, but the epistemic distinction is captured. Downstream can act on it.
+
+[1;36m== SCENE 3 — joined confidence via Viterbi, computed by the engine ==[0m
+  Question: how confident is 'this patient is diabetic based on their HbA1c'?
+  Closed-form Viterbi: 0.95 (lab) × 0.70 (inference) = 0.665.
+ refresh_weights 
+-----------------
+ 
+(1 row)
+
+ patient | hba1c | is_diabetic | joined_conf |               provsql                
+---------+-------+-------------+-------------+--------------------------------------
+      42 | 7.2   | true        |      0.6650 | 6f605626-ce94-5264-b5c4-1f6b0cf2a963
+(1 row)
+
+  → engine returned 0.6650. No app-side arithmetic. Viterbi semiring.
+  → naive Postgres has no honest answer to this question — 'confidence' would
+    have to be reconstructed in every application layer, differently each time.
+
+[1;36m== END — three engine-enforced guarantees, one connection, zero app code ==[0m
+  1. epistemic type checked at write time (Scene 1).
+  2. labels preserved end-to-end (Scene 2).
+  3. confidence propagated correctly through joins (Scene 3).
+
