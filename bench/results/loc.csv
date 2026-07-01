@@ -1,0 +1,5 @@
+system,guard_loc,files
+kndb,150,engine/03_triggers_epistemic.sql:39 | engine/04_triggers_conflict.sql:51 | engine/05_bitemporal.sql:27 | engine/06_provsql_setup.sql:16 | engine/07_progressive_depth.sql:17
+pg_naive,0,
+py_guards,41,baselines/py_guards/guards.py:41
+pg_handrolled_triggers,124,baselines/pg_handrolled_triggers/schema.sql:124

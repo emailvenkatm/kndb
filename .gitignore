@@ -14,6 +14,9 @@ __pycache__/
 .venv/
 .uv-cache/
 uv.lock
+bench/.venv/
+bench/__pycache__/
+bench/*/__pycache__/
 
 # Postgres
 *.pgdata
