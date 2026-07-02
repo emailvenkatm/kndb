@@ -326,6 +326,7 @@
 <nav class="toc">
   <div class="container">
     <a href="#problem">The problem</a>
+    <a href="#wild">In the wild</a>
     <a href="#idea">The idea</a>
     <a href="#why">Why now</a>
     <a href="#primitives">The 5 primitives</a>
@@ -373,10 +374,51 @@
   </div>
 </section>
 
+<!-- ========================= IN THE WILD ========================= -->
+<section id="wild">
+  <div class="container">
+    <div class="section-eyebrow">02 &middot; this is happening now</div>
+    <h2>Five real incidents where the DB forgot which was which</h2>
+    <p>
+      A fair pushback is "who on earth writes model output into a labs column?" The answer is: nobody types it in on purpose. The distinction gets erased at pipeline boundaries the original writer didn't own. Every case below is verified against a primary URL, most from 2024-2026. These are the incidents the paper's motivation section should lead with. Full research notes at <code>docs/research_healthcare_provenance.md</code> and <code>docs/research_cross_industry_provenance.md</code>.
+    </p>
+
+    <div class="example">
+      <div class="domain">Nabla / Whisper &middot; ambient scribe &middot; ~85 US health systems, ~7M visits &middot; Oct 2024</div>
+      <p>Whisper-based ambient scribes hallucinated content into clinician-signed notes. Cornell and UW researchers logged hallucinations in ~1% of ~13,000 clean audio segments; other samples were far worse. Nabla's CTO confirmed source audio is deleted "for data safety." Once a fabrication is signed, there is no ground truth left to audit against. <em>Source:</em> <a href="https://fortune.com/2024/10/26/openai-transcription-tool-whisper-hallucination-rate-ai-tools-hospitals-patients-doctors/">Fortune, Oct 26 2024</a></p>
+    </div>
+
+    <div class="example">
+      <div class="domain">DZ Reserve v. Meta &middot; N.D. Cal. 3:18-cv-04978 &middot; ~$7B damages sought</div>
+      <p>Advertisers allege Meta's "Potential Reach" — a modeled audience estimate — was surfaced at bid time as if it were a measured audience size, allegedly inflated 200-400% by duplicate and fake accounts. Ninth Circuit affirmed class certification. A derived estimate traveled through the API indistinguishable from a measured count. Textbook motivating case. <em>Source:</em> <a href="https://www.cohenmilstein.com/case-study/dz-reserve-et-al-v-facebook/">Cohen Milstein docket page</a></p>
+    </div>
+
+    <div class="example">
+      <div class="domain">Zillow Offers &middot; iBuying shutdown Nov 2021 &middot; ~$569M writedown, 25% layoffs</div>
+      <p>The Zestimate model output was consumed by the bidding system as purchase-price signal. Downstream systems never distinguished "model prediction" from "verified comparable." Stanford GSB framed it as a lemons problem — algorithmic estimates used where deeper appraisal was required. <em>Source:</em> <a href="https://www.gsb.stanford.edu/insights/flip-flop-why-zillows-algorithmic-home-buying-venture-imploded">Stanford GSB post-mortem</a></p>
+    </div>
+
+    <div class="example">
+      <div class="domain">CFPB v. Hello Digit &middot; $2.7M penalty + $68,145 redress &middot; Aug 2022</div>
+      <p>The autosave algorithm estimated a "safe" transfer amount. Downstream banking rails executed those estimates as authorized ACH debits. Roughly 70,000 overdraft reimbursement requests since 2017. A model prediction became an authorized debit with no epistemic boundary between the two. <em>Source:</em> <a href="https://www.consumerfinance.gov/about-us/newsroom/cfpb-takes-action-against-hello-digit-for-lying-to-consumers-about-its-automated-savings-algorithm/">CFPB press release</a></p>
+    </div>
+
+    <div class="example">
+      <div class="domain">Epic Sepsis Model &middot; Michigan Medicine external validation &middot; JAMA Intern Med 2021</div>
+      <p>The vendor-shipped sepsis prediction model writes a score to the EHR every 15 minutes. External validation across 38,455 hospitalizations found the model missed about two-thirds of sepsis cases and drove massive alert fatigue. Downstream analytics consumed those scores alongside vitals with no visible inference marker. Hundreds of hospitals inherited the model before independent validation existed. <em>Source:</em> <a href="https://jamanetwork.com/journals/jamainternalmedicine/fullarticle/2781307">Wong et al., JAMA Intern Med 2021;181(8):1065</a></p>
+    </div>
+
+    <div class="callout">
+      <div class="tag">And the regulators know</div>
+      <p>FDA's <a href="https://www.fda.gov/regulatory-information/search-fda-guidance-documents/marketing-submission-recommendations-predetermined-change-control-plan-artificial-intelligence">Predetermined Change Control Plan final guidance (Feb 2025)</a> and ONC's <a href="https://www.mintz.com/insights-center/viewpoints/2146/2024-01-08-hhs-onc-hti-1-final-rule-introduces-new-transparency">HTI-1 DSI rule (effective Jan 2025)</a> both regulate the <em>model</em>. Neither requires that a value written back to the chart carry a persistent epistemic-kind flag. The storage-layer provenance gap is exactly the space KNDB fills.</p>
+    </div>
+  </div>
+</section>
+
 <!-- ========================= THE IDEA ========================= -->
 <section id="idea">
   <div class="container">
-    <div class="section-eyebrow">02 &middot; the idea</div>
+    <div class="section-eyebrow">03 &middot; the idea</div>
     <h2>Make trust a first-class database primitive</h2>
     <p>
       KNDB is a Postgres extension. It changes what a fact is: every row carries an <strong>epistemic kind</strong> (observation, inference, derived), a <strong>confidence in [0,1]</strong>, a set of <strong>source facts</strong> it depends on, and two <strong>time ranges</strong> (when the fact was true in the world, when the database believed it).
@@ -394,7 +436,7 @@
 <!-- ========================= WHY NOW ========================= -->
 <section id="why">
   <div class="container">
-    <div class="section-eyebrow">03 &middot; why this matters now</div>
+    <div class="section-eyebrow">04 &middot; why this matters now</div>
     <h2>Three forces make this the right moment</h2>
 
     <h3>1. Agents are writing to your database</h3>
@@ -417,7 +459,7 @@
 <!-- ========================= 5 PRIMITIVES ========================= -->
 <section id="primitives">
   <div class="container">
-    <div class="section-eyebrow">04 &middot; the five primitives, with examples</div>
+    <div class="section-eyebrow">05 &middot; the five primitives, with examples</div>
     <h2>Five write-time-checked rules that add up to trust</h2>
     <p>
       Each of these is a real, running piece of engine code in the repo. Each has failing-test-first evidence that the engine actually catches the bug the rule claims to catch. All five stack: the paper's contribution is the coherent package.
@@ -588,7 +630,7 @@
 <!-- ========================= WHAT WE BUILT ========================= -->
 <section id="built">
   <div class="container">
-    <div class="section-eyebrow">05 &middot; what we've actually built</div>
+    <div class="section-eyebrow">06 &middot; what we've actually built</div>
     <h2>Prototype status <span class="status-badge">Green</span></h2>
     <p>
       Everything below runs today, with real data, under CI, on a real GitHub-hosted runner. No mocks. No fabricated numbers.
@@ -670,7 +712,7 @@
 <!-- ========================= TIMELINE & CIDR ========================= -->
 <section id="timeline">
   <div class="container">
-    <div class="section-eyebrow">06 &middot; timeline &amp; CIDR 2027</div>
+    <div class="section-eyebrow">07 &middot; timeline &amp; CIDR 2027</div>
     <h2>Where we submit, when we submit, what's left</h2>
     <p>
       CIDR (Conference on Innovative Data Systems Research) is the right venue for this paper. It rewards small, working systems that make a sharp claim about how data systems should evolve. Six-page limit forces the argument to be crisp. Historically it accepts vision-plus-prototype papers that don't have to beat the whole world on TPC-H.
@@ -725,7 +767,7 @@
 <!-- ========================= RELATED WORK ========================= -->
 <section id="related">
   <div class="container">
-    <div class="section-eyebrow">07 &middot; how KNDB differs from adjacent systems</div>
+    <div class="section-eyebrow">08 &middot; how KNDB differs from adjacent systems</div>
     <h2>Everyone else has some of it. Nobody has all of it in the engine.</h2>
     <table>
       <thead>
@@ -818,7 +860,7 @@
 <!-- ========================= TRY IT ========================= -->
 <section id="try">
   <div class="container">
-    <div class="section-eyebrow">08 &middot; try it</div>
+    <div class="section-eyebrow">09 &middot; try it</div>
     <h2>Fifteen minutes and you have it running</h2>
     <pre><code>git clone git@github.com:emailvenkatm/kndb.git
 cd kndb
