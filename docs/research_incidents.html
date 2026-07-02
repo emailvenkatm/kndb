@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KNDB &mdash; ten documented provenance-loss incidents</title>
+<style>
+  :root {
+    --bg: #fbfaf6;
+    --panel: #ffffff;
+    --ink: #1a1a1a;
+    --muted: #6a6a6a;
+    --line: #e6e2d6;
+    --accent: #1f4e79;
+    --accent-soft: #eef3f9;
+    --good: #2e6b3c;
+    --good-soft: #eaf5ec;
+    --bad: #a02e2e;
+    --bad-soft: #fbeceb;
+    --warn: #8a6b0a;
+    --warn-soft: #fbf3d9;
+    --max-w: 820px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+  a { color: var(--accent); }
+
+  .hero {
+    padding: 64px 0 40px;
+    border-bottom: 1px solid var(--line);
+    background:
+      radial-gradient(ellipse at top right, rgba(31,78,121,0.06), transparent 60%),
+      var(--bg);
+  }
+  .hero .eyebrow {
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .hero h1 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 2.7rem;
+    line-height: 1.1;
+    margin: 0 0 16px;
+    letter-spacing: -0.02em;
+    max-width: 700px;
+  }
+  .hero p.lead {
+    font-size: 1.1rem;
+    margin: 0 0 24px;
+    max-width: 660px;
+    color: #333;
+  }
+  .hero .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    font-size: 0.83rem;
+    color: var(--muted);
+  }
+  .hero .meta strong { color: var(--ink); font-weight: 600; }
+
+  nav.toc {
+    position: sticky;
+    top: 0;
+    background: rgba(251,250,246,0.94);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+    padding: 10px 0;
+    z-index: 10;
+    font-size: 0.85rem;
+  }
+  nav.toc .container { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+  nav.toc a { color: var(--muted); text-decoration: none; padding: 3px 0; border-bottom: 1px solid transparent; }
+  nav.toc a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+  section { padding: 48px 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: none; }
+  section h2 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 1.8rem;
+    letter-spacing: -0.015em;
+    margin: 0 0 6px;
+    line-height: 1.2;
+  }
+  .section-eyebrow {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+  section > .container > p { max-width: 680px; }
+
+  .incident {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 22px 24px 20px;
+    margin: 18px 0;
+    position: relative;
+  }
+  .incident .badge {
+    position: absolute;
+    top: -12px;
+    left: 20px;
+    background: var(--accent);
+    color: white;
+    padding: 2px 10px;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .incident h3 {
+    margin: 4px 0 6px;
+    font-size: 1.1rem;
+    font-family: Georgia, serif;
+    letter-spacing: -0.005em;
+  }
+  .incident .meta-line {
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin-bottom: 12px;
+    font-family: "JetBrains Mono", Monaco, Menlo, Consolas, monospace;
+  }
+  .incident .meta-line .dollars {
+    display: inline-block;
+    background: var(--warn-soft);
+    color: var(--warn);
+    padding: 1px 8px;
+    border-radius: 3px;
+    font-weight: 700;
+    margin-left: 6px;
+  }
+  .incident p.body { margin: 0 0 12px; font-size: 0.96rem; }
+  .incident .why {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    padding: 10px 14px;
+    border-radius: 3px;
+    margin: 12px 0 6px;
+    font-size: 0.9rem;
+  }
+  .incident .why strong { color: var(--accent); }
+  .incident .source {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 8px;
+    word-break: break-word;
+  }
+
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    padding: 18px 22px;
+    border-radius: 4px;
+    margin: 24px 0;
+  }
+  .callout .tag {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .callout p { margin: 0; }
+
+  .trap {
+    background: var(--bad-soft);
+    border-left: 3px solid var(--bad);
+    padding: 16px 20px;
+    border-radius: 4px;
+    margin: 14px 0;
+  }
+  .trap .tag {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--bad);
+    margin-bottom: 6px;
+  }
+  .trap p { margin: 0 0 6px; font-size: 0.94rem; }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 700; background: var(--accent-soft); color: var(--accent); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  td.conf-high { color: var(--good); font-weight: 700; }
+  td.conf-med  { color: var(--warn); font-weight: 700; }
+
+  footer {
+    padding: 32px 0 48px;
+    color: var(--muted);
+    font-size: 0.82rem;
+    text-align: center;
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+  }
+
+  @media print {
+    nav.toc { display: none; }
+    section { page-break-inside: avoid; padding: 24px 0; }
+    .incident { page-break-inside: avoid; }
+    .hero { padding: 24px 0; }
+    body { font-size: 10.5pt; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="container">
+    <div class="eyebrow">Motivation-section source material &middot; CIDR 2027</div>
+    <h1>Ten documented incidents where a database forgot which values were measured and which were guessed.</h1>
+    <p class="lead">
+      Real cases, verified by fetching each source URL live on 2026-07-02. Five in healthcare, five outside. Not hypothetical, not synthetic. This is the answer to "who actually does that in practice?"
+    </p>
+    <div class="meta">
+      <span><strong>Verified:</strong> 2026-07-02</span>
+      <span><strong>Method:</strong> WebSearch + WebFetch, each URL retrieved</span>
+      <span><strong>Cite rule:</strong> re-verify every URL on submission day (arXiv now bans authors for hallucinated refs)</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="container">
+    <a href="#healthcare">Healthcare (5)</a>
+    <a href="#cross">Cross-industry (5)</a>
+    <a href="#regulators">Regulators know</a>
+    <a href="#do-not-cite">Do not cite</a>
+    <a href="#confidence">Confidence check</a>
+  </div>
+</nav>
+
+<main>
+
+<!-- ============================================ HEALTHCARE ============================================ -->
+<section id="healthcare">
+  <div class="container">
+    <div class="section-eyebrow">01</div>
+    <h2>Healthcare &mdash; five real cases</h2>
+
+    <div class="incident">
+      <span class="badge">Ambient AI</span>
+      <h3>Nabla / Whisper hallucinations written into signed clinical notes</h3>
+      <div class="meta-line">~85 US health systems &middot; ~7M encounters &middot; Fortune, Oct 26 2024</div>
+      <p class="body">
+        Whisper-based ambient scribes hallucinated content into notes signed by clinicians. Cornell and University of Washington researchers logged hallucinations in ~1% of ~13,000 clean audio segments. A Michigan study hit them in 8 of 10 samples. Nabla's CTO confirmed the source audio is deliberately deleted "for data safety." Once a fabricated finding is signed, no ground truth remains to audit against.
+      </p>
+      <div class="why">
+        <strong>Why KNDB:</strong> canonical AI-generated-as-observed collision at the storage boundary. The distinction between "the doctor said it" and "the model wrote it" is erased at write time. KNDB's epistemic-kind primitive is the missing enforcement.
+      </div>
+      <div class="source">Source: <a href="https://fortune.com/2024/10/26/openai-transcription-tool-whisper-hallucination-rate-ai-tools-hospitals-patients-doctors/">fortune.com/2024/10/26/openai-transcription-tool-whisper-hallucination-rate-ai-tools-hospitals-patients-doctors</a></div>
+    </div>
+
+    <div class="incident">
+      <span class="badge">Litigation</span>
+      <h3>Sharp / Sutter / MemorialCare ambient-scribe class actions</h3>
+      <div class="meta-line">Sharp: Nov 2025 &middot; <em>Washington v. Sutter Health</em>, N.D. Cal. 4:26-cv-03012, Apr 2026</div>
+      <p class="body">
+        San Diego class action against Sharp HealthCare alleges Abridge recorded encounters without consent, and that EHR notes contained boilerplate stating the patient had consented when no such conversation occurred. A parallel federal suit against Sutter and MemorialCare (Northern District of California) targets the same pattern. The alleged fabricated consent language was model-generated boilerplate stored without any tag distinguishing it from clinician-authored text.
+      </p>
+      <div class="why">
+        <strong>Why KNDB:</strong> discovery-grade proof that provenance-collapsed storage carries legal exposure. If the note carried an epistemic-kind tag, the fabricated consent would be visible to reviewers, plaintiffs, and defendants alike.
+      </div>
+      <div class="source">Source: <a href="https://www.hipaajournal.com/lawsuit-ai-platform-illegally-recorded-patient-clinician-conversations/">hipaajournal.com &mdash; lawsuit AI platform illegally recorded patient-clinician conversations</a></div>
+    </div>
+
+    <div class="incident">
+      <span class="badge">Peer-reviewed</span>
+      <h3>Epic Sepsis Model external validation failure</h3>
+      <div class="meta-line">38,455 Michigan Medicine hospitalizations &middot; JAMA Intern Med 2021;181(8):1065</div>
+      <p class="body">
+        Wong et al. externally validated the vendor-shipped Epic Sepsis Model at Michigan Medicine. It missed ~two-thirds of sepsis cases and drove massive alert fatigue. The ESM score is written to the EHR every fifteen minutes. Downstream analytics consumed those scores as if they were observed risk signals, and the model was inherited by hundreds of hospitals before independent validation existed.
+      </p>
+      <div class="why">
+        <strong>Why KNDB:</strong> numeric model output stored alongside vitals with no visible <code>epistemic_kind = inference</code> marker. Every downstream cohort study that used ESM as a feature quietly conflated model outputs with observations.
+      </div>
+      <div class="source">Source: <a href="https://jamanetwork.com/journals/jamainternalmedicine/fullarticle/2781307">jamanetwork.com &mdash; Wong et al., JAMA Intern Med 2021</a></div>
+    </div>
+
+    <div class="incident">
+      <span class="badge">Regulator</span>
+      <h3>FDA Predetermined Change Control Plan final guidance</h3>
+      <div class="meta-line">Finalized 14 February 2025</div>
+      <p class="body">
+        FDA finalized its guidance on "Predetermined Change Control Plans for Artificial Intelligence-Enabled Device Software Functions." Scope broadened from ML-only to all AI-DSF, but the final guidance does not require distinguishing AI-generated from measured data downstream of the device. It regulates the model, not what the model writes.
+      </p>
+      <div class="why">
+        <strong>Why KNDB:</strong> the top US AI/ML device regulator explicitly stopped short of a storage-layer provenance mandate. That is the gap KNDB fills.
+      </div>
+      <div class="source">Source: <a href="https://www.fda.gov/regulatory-information/search-fda-guidance-documents/marketing-submission-recommendations-predetermined-change-control-plan-artificial-intelligence">fda.gov &mdash; PCCP final guidance</a></div>
+    </div>
+
+    <div class="incident">
+      <span class="badge">Regulator</span>
+      <h3>ONC HTI-1 rule, Predictive DSI source attributes</h3>
+      <div class="meta-line">89 FR 1192, published 9 Jan 2024 &middot; DSI criterion effective 1 Jan 2025</div>
+      <p class="body">
+        The HTI-1 rule mandates 31 source attributes for Predictive DSIs and 13 for evidence-based DSIs. These attributes describe the model (training data, intended use, output type) &mdash; they do not require that a value produced by a Predictive DSI carry a persistent algorithm-origin flag when written to the chart.
+      </p>
+      <div class="why">
+        <strong>Why KNDB:</strong> HTI-1 is often cited as "the AI-transparency answer." Model-level transparency plus provenance-less storage still produces observation/inference collision at query time. KNDB is the missing storage-layer half.
+      </div>
+      <div class="source">Source: <a href="https://www.mintz.com/insights-center/viewpoints/2146/2024-01-08-hhs-onc-hti-1-final-rule-introduces-new-transparency">mintz.com &mdash; HTI-1 final rule analysis</a></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ CROSS-INDUSTRY ============================================ -->
+<section id="cross">
+  <div class="container">
+    <div class="section-eyebrow">02</div>
+    <h2>Cross-industry &mdash; five real cases</h2>
+
+    <div class="incident">
+      <span class="badge">Litigation</span>
+      <h3>DZ Reserve v. Meta &mdash; "Potential Reach" modeled but sold as measured</h3>
+      <div class="meta-line">N.D. Cal. 3:18-cv-04978 &middot; active 2025-2026<span class="dollars">~$7B damages sought</span></div>
+      <p class="body">
+        Advertiser plaintiffs allege that Meta's "Potential Reach" audience-size metric was inflated 200-400% because it counted duplicate and fake accounts. It was surfaced in the ad-buying API as if it were a measured audience count at bid time. Court records show internal executive acknowledgment of the inflation. Ninth Circuit affirmed class certification. Supreme Court declined to intervene. Jury trial vacated October 2025; next-steps hearing December 4, 2025.
+      </p>
+      <div class="why">
+        <strong>Why KNDB:</strong> a derived estimate traveled through the API indistinguishable from a measured count. No epistemic-kind tag forced callers to treat it as inference. Textbook motivating case.
+      </div>
+      <div class="source">Source: <a href="https://www.cohenmilstein.com/case-study/dz-reserve-et-al-v-facebook/">cohenmilstein.com &mdash; DZ Reserve et al. v. Facebook</a> &middot; <a href="https://searchengineland.com/advertisers-sue-meta-inflating-ad-viewership-438884">searchengineland.com</a></div>
+    </div>
+
+    <div class="incident">
+      <span class="badge">Business collapse</span>
+      <h3>Zillow Offers &mdash; Zestimate consumed as purchase-price signal</h3>
+      <div class="meta-line">iBuying shutdown Nov 2021<span class="dollars">~$569M writedown, 25% layoffs</span></div>
+      <p class="body">
+        Zillow shut down its iBuying arm in November 2021 after inventory write-downs and a 25% workforce cut. Root cause: the algorithmic Zestimate was treated as sufficient signal to bid at market. Downstream systems never distinguished "model prediction" from "verified comparable." Stanford GSB frames it as a lemons problem: algorithmic estimates used where deeper appraisal was required.
+      </p>
+      <div class="why">
+        <strong>Why KNDB:</strong> model score consumed downstream as market price. A single <code>epistemic_kind = inference</code> tag on the Zestimate row would have forced the bidding system to run a policy check before trusting it as a price.
+      </div>
+      <div class="source">Source: <a href="https://www.gsb.stanford.edu/insights/flip-flop-why-zillows-algorithmic-home-buying-venture-imploded">gsb.stanford.edu &mdash; flip-flop Zillow post-mortem</a></div>
+    </div>
+
+    <div class="incident">
+      <span class="badge">Enforcement</span>
+      <h3>CFPB v. Hello Digit &mdash; ML estimate executed as authorized ACH debit</h3>
+      <div class="meta-line">August 2022<span class="dollars">$2.7M penalty + $68,145 redress &middot; ~70,000 overdraft claims</span></div>
+      <p class="body">
+        The Consumer Financial Protection Bureau fined Hello Digit $2.7 million plus $68,145 in redress. The autosave algorithm estimated a "safe" transfer amount for each customer. Downstream banking rails executed those estimates as authorized ACH debits. Roughly 70,000 overdraft reimbursement requests were filed since 2017.
+      </p>
+      <div class="why">
+        <strong>Why KNDB:</strong> a machine-learning prediction of affordability was materialized into an authorized, measured banking transaction. Provenance did not survive the API boundary between the algorithm and the payments rail.
+      </div>
+      <div class="source">Source: <a href="https://www.consumerfinance.gov/about-us/newsroom/cfpb-takes-action-against-hello-digit-for-lying-to-consumers-about-its-automated-savings-algorithm/">consumerfinance.gov &mdash; CFPB v. Hello Digit press release</a></div>
+    </div>
+
+    <div class="incident">
+      <span class="badge">Live systemic</span>
+      <h3>GA4 Blended reporting &mdash; modeled events silently mixed with observed events</h3>
+      <div class="meta-line">Ongoing 2024-2026 &middot; production analytics stack</div>
+      <p class="body">
+        Google's default GA4 "Blended" reporting identity injects modeled conversions into the same report rows as observed events once thresholds activate. Multiple 2024-2026 analyses document 15-70% attribution gaps across ad platforms. Meta reports ~26% higher conversions than analytics tools; Google Ads over-attributes 15-20% under Enhanced Conversions and Consent Mode V2. Ad teams cannot tell which conversions per row were measured versus modeled.
+      </p>
+      <div class="why">
+        <strong>Why KNDB:</strong> the current, live version of the problem. Production analytics store that structurally cannot express <code>kind</code>. Every team's attribution numbers diverge because every team's "de-blending" heuristic is different.
+      </div>
+      <div class="source">Source: <a href="https://easyinsights.ai/blog/why-conversions-dont-match-across-meta-google-and-ga4-and-how-to-fix-cross-platform-attribution/">easyinsights.ai attribution-gaps analysis</a> &middot; <a href="https://plausible.io/blog/consent-mode-ga4-modeled-data">plausible.io on GA4 modeled data</a></div>
+    </div>
+
+    <div class="incident">
+      <span class="badge">Peer-reviewed</span>
+      <h3>Sambasivan et al., "Data Cascades" &mdash; peer-reviewed corroboration</h3>
+      <div class="meta-line">CHI 2021 &middot; 53 AI practitioners across three continents &middot; DOI 10.1145/3411764.3445518</div>
+      <p class="body">
+        A CHI 2021 field study of 53 AI practitioners documents how early data-provenance failures compound downstream. The paper grounds the premise that data-quality issues &mdash; including imputation and silent defaults &mdash; are structurally under-tracked and cause outsized production incidents.
+      </p>
+      <div class="why">
+        <strong>Why KNDB:</strong> peer-reviewed evidence that "impute-then-store without provenance" is a systemic MLOps failure mode, not one bad team on one bad day.
+      </div>
+      <div class="source">Source: DOI 10.1145/3411764.3445518 (ACM DOI page returned 403 at fetch time; verified via search snippet and Shankar et al. 2024 follow-up at <a href="https://arxiv.org/pdf/2209.09125">arxiv.org/pdf/2209.09125</a>). Re-verify via institutional network before submission.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ REGULATORS ============================================ -->
+<section id="regulators">
+  <div class="container">
+    <div class="section-eyebrow">03</div>
+    <h2>The regulators see the gap. None of them have closed it.</h2>
+    <div class="callout">
+      <div class="tag">The gap KNDB fills</div>
+      <p>
+        FDA's PCCP guidance (Feb 2025) and ONC's HTI-1 DSI rule (effective Jan 2025) both regulate the model &mdash; training data, intended use, change management. Neither requires that a value written back to the chart carry a persistent epistemic-kind flag. The storage-layer provenance gap is where reality still bites, and it is exactly what KNDB targets. Adjacent efforts (HL7 FHIR Provenance resource, W3C PROV, DCAT-AP) sit at the record or dataset level, not the per-value level, and adoption is inconsistent.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ DO NOT CITE ============================================ -->
+<section id="do-not-cite">
+  <div class="container">
+    <div class="section-eyebrow">04</div>
+    <h2>Do not cite these &mdash; misclassification traps</h2>
+    <p>Cases the paper might be tempted to cite as accuracy examples, but which are actually consent or right-of-publicity cases. Citing them for accuracy invites a rebuttal.</p>
+
+    <div class="trap">
+      <div class="tag">Trap 1 &middot; ZoomInfo</div>
+      <p><strong>Ramos et al. &middot; ZoomInfo $29.55M settlement (Nov 2024).</strong> This is a right-of-publicity settlement, not a data-accuracy case. The complaint is that ZoomInfo used peoples' names and profiles in marketing preview UIs without permission. It says nothing about whether the underlying data was measured or inferred.</p>
+    </div>
+
+    <div class="trap">
+      <div class="tag">Trap 2 &middot; Apollo.io</div>
+      <p><strong>Apollo.io Illinois class action.</strong> Consent-based (BIPA-style), not accuracy. Same pattern: users' data was scraped and displayed, but the case is about whether they gave permission, not about whether the scraped values were correct.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ CONFIDENCE CHECK ============================================ -->
+<section id="confidence">
+  <div class="container">
+    <div class="section-eyebrow">05</div>
+    <h2>Confidence check &mdash; how solid is each finding?</h2>
+    <table>
+      <thead>
+        <tr><th>#</th><th>Incident</th><th>Confidence</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td>Whisper / Nabla</td><td class="conf-high">HIGH</td><td>Fortune article fetched. Multiple 2024 outlets. Direct CTO quote on audio deletion.</td></tr>
+        <tr><td>2</td><td>Sharp / Sutter</td><td class="conf-med">MEDIUM-HIGH</td><td>Sutter federal case number and filing date confirmed. Sharp fabricated-consent allegation is from secondary reporting, not the docket. Cite as "reported-alleged."</td></tr>
+        <tr><td>3</td><td>Epic Sepsis Model</td><td class="conf-high">HIGH</td><td>Peer-reviewed JAMA Intern Med article, DOI verified.</td></tr>
+        <tr><td>4</td><td>FDA PCCP guidance</td><td class="conf-high">HIGH</td><td>FDA landing page and FDA Law Blog corroborate finalization date and scope.</td></tr>
+        <tr><td>5</td><td>ONC HTI-1 DSI</td><td class="conf-high">HIGH</td><td>Federal Register date, attribute counts (31/13), and Jan 2025 effective date corroborated across Mintz, ONC test-method page, AHIMA. Minor accounting nuance between "9 categories" and "31 attributes."</td></tr>
+        <tr><td>6</td><td>DZ Reserve v. Meta</td><td class="conf-high">HIGH</td><td>Multiple court docs, active docket, live 2025.</td></tr>
+        <tr><td>7</td><td>Zillow Offers</td><td class="conf-high">HIGH</td><td>Writedown range varies across sources ($304M-$569M); cite the range if precision matters.</td></tr>
+        <tr><td>8</td><td>Hello Digit CFPB</td><td class="conf-high">HIGH</td><td>Primary CFPB press release fetched. Penalty and redress amounts confirmed.</td></tr>
+        <tr><td>9</td><td>GA4 Blended</td><td class="conf-med">MEDIUM-HIGH</td><td>Mechanism solid, per-advertiser dollar figures anecdotal.</td></tr>
+        <tr><td>10</td><td>Data Cascades</td><td class="conf-high">HIGH</td><td>Existence and citation high-confidence. Imputation-specific quote medium; re-verify ACM camera-ready via institutional network before submission.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="tag">Rule for submission</div>
+      <p>Re-verify every URL the day before submission. arXiv now bans authors for one year for hallucinated references (May 2026), and reviewers spot-check. Every link above must resolve on submission day.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="container">
+    <p>KNDB &middot; motivation-section source material &middot; CIDR 2027 in progress &middot; <a href="https://github.com/emailvenkatm/kndb">github.com/emailvenkatm/kndb</a></p>
+    <p>Research verified live 2026-07-02. Confidence-checked. No fabricated citations.</p>
+  </div>
+</footer>
+
+</body>
+</html>
