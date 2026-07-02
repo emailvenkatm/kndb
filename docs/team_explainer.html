@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KNDB &mdash; team explainer</title>
+<style>
+  :root {
+    --bg: #fbfaf6;
+    --panel: #ffffff;
+    --ink: #1a1a1a;
+    --muted: #6a6a6a;
+    --line: #e6e2d6;
+    --accent: #1f4e79;
+    --accent-soft: #eef3f9;
+    --good: #2e6b3c;
+    --good-soft: #eaf5ec;
+    --bad: #a02e2e;
+    --bad-soft: #fbeceb;
+    --warn: #8a6b0a;
+    --warn-soft: #fbf3d9;
+    --code-bg: #1e1e1e;
+    --code-fg: #f2f2f2;
+    --max-w: 780px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 16.5px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+
+  /* Hero */
+  .hero {
+    padding: 72px 0 48px;
+    border-bottom: 1px solid var(--line);
+    background:
+      radial-gradient(ellipse at top right, rgba(31,78,121,0.06), transparent 60%),
+      var(--bg);
+  }
+  .hero .eyebrow {
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+  .hero h1 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 3.4rem;
+    line-height: 1.05;
+    margin: 0 0 20px;
+    letter-spacing: -0.02em;
+  }
+  .hero h1 .sub { display:block; font-size: 1.1rem; font-family: inherit; font-weight: 400; color: var(--muted); letter-spacing: 0; margin-top: 8px; font-style: italic; }
+  .hero p.lead {
+    font-size: 1.22rem;
+    margin: 0 0 24px;
+    max-width: 640px;
+    color: #333;
+  }
+  .hero .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  .hero .meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .hero .meta strong { color: var(--ink); font-weight: 600; }
+
+  /* TOC */
+  nav.toc {
+    position: sticky;
+    top: 0;
+    background: rgba(251,250,246,0.95);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+    padding: 12px 0;
+    z-index: 10;
+  }
+  nav.toc .container { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 0.85rem; }
+  nav.toc a { color: var(--muted); text-decoration: none; padding: 4px 0; border-bottom: 1px solid transparent; }
+  nav.toc a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* Sections */
+  section { padding: 56px 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: none; }
+  section h2 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 2rem;
+    letter-spacing: -0.015em;
+    margin: 0 0 8px;
+    line-height: 1.2;
+  }
+  section .section-eyebrow {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  section p, section ul, section ol { max-width: 680px; }
+  section h3 { font-size: 1.15rem; margin: 32px 0 8px; letter-spacing: -0.005em; }
+  section h4 { font-size: 1rem; margin: 20px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+
+  strong { font-weight: 700; }
+  code {
+    font-family: "JetBrains Mono", Monaco, Menlo, Consolas, monospace;
+    background: #eee7d5;
+    color: #4a3200;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 0.86em;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 16px 20px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.55;
+    margin: 16px 0;
+  }
+  pre code { background: transparent; color: inherit; padding: 0; }
+
+  /* Fail vs Pass cards */
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 20px 0;
+  }
+  .compare .card {
+    padding: 16px 20px;
+    border-radius: 6px;
+    border-left: 3px solid;
+  }
+  .compare .fail { background: var(--bad-soft); border-color: var(--bad); }
+  .compare .pass { background: var(--good-soft); border-color: var(--good); }
+  .compare .card .tag {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .compare .fail .tag { color: var(--bad); }
+  .compare .pass .tag { color: var(--good); }
+  .compare .card p { margin: 0; font-size: 0.94rem; max-width: none; }
+  @media (max-width: 640px) { .compare { grid-template-columns: 1fr; } }
+
+  /* Primitive cards */
+  .primitive {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 28px 28px 24px;
+    margin: 24px 0;
+    position: relative;
+  }
+  .primitive .num {
+    position: absolute;
+    top: -14px;
+    left: 24px;
+    background: var(--accent);
+    color: white;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-family: Georgia, serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+  }
+  .primitive h3 { margin-top: 0; font-size: 1.35rem; font-family: Georgia, serif; letter-spacing: -0.01em; }
+  .primitive .oneliner { color: var(--muted); margin: 4px 0 20px; font-style: italic; }
+  .example {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 14px 18px;
+    margin: 12px 0;
+  }
+  .example .domain { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+  .example p { margin: 4px 0; font-size: 0.94rem; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { font-weight: 700; background: var(--accent-soft); color: var(--accent); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  td.check { color: var(--good); font-weight: 600; }
+  td.cross { color: var(--muted); }
+
+  /* Timeline */
+  .timeline {
+    position: relative;
+    padding-left: 32px;
+    margin: 20px 0;
+  }
+  .timeline::before {
+    content: "";
+    position: absolute;
+    left: 8px; top: 6px; bottom: 6px;
+    width: 2px;
+    background: var(--line);
+  }
+  .timeline .step {
+    position: relative;
+    margin-bottom: 20px;
+  }
+  .timeline .step::before {
+    content: "";
+    position: absolute;
+    left: -30px; top: 8px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--panel);
+    border: 2px solid var(--accent);
+  }
+  .timeline .step.done::before { background: var(--good); border-color: var(--good); }
+  .timeline .step.now::before { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px rgba(31,78,121,0.15); }
+  .timeline .step .date {
+    font-family: "JetBrains Mono", Monaco, monospace;
+    font-size: 0.78rem;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+    margin-bottom: 2px;
+  }
+  .timeline .step .title { font-weight: 700; font-size: 0.98rem; }
+  .timeline .step .body { font-size: 0.9rem; color: #444; margin-top: 3px; }
+
+  /* Callout box */
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    padding: 16px 20px;
+    border-radius: 4px;
+    margin: 20px 0;
+  }
+  .callout .tag {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .callout p { margin: 0; }
+
+  .status-badge {
+    display: inline-block;
+    background: var(--good);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    vertical-align: middle;
+    margin-left: 6px;
+  }
+  .status-badge.pending { background: var(--warn); }
+
+  ul.check { list-style: none; padding-left: 0; }
+  ul.check li { padding-left: 24px; position: relative; margin: 8px 0; }
+  ul.check li::before {
+    content: "✓";
+    color: var(--good);
+    font-weight: 700;
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+  ul.check li.pending::before { content: "○"; color: var(--warn); }
+
+  footer {
+    padding: 40px 0 60px;
+    color: var(--muted);
+    font-size: 0.85rem;
+    text-align: center;
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+  }
+  footer a { color: var(--accent); }
+
+  @media print {
+    nav.toc { display: none; }
+    section { page-break-inside: avoid; padding: 32px 0; }
+    .primitive { page-break-inside: avoid; }
+    pre { white-space: pre-wrap; }
+    .hero { padding: 32px 0; }
+    body { font-size: 11pt; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="container">
+    <div class="eyebrow">CIDR 2027 submission &middot; internal team explainer</div>
+    <h1>KNDB
+      <span class="sub">A database that refuses to lose the distinction between a measurement, a model's guess, and a computed aggregate.</span>
+    </h1>
+    <p class="lead">
+      When AI systems write into ordinary databases, a model's low-confidence prediction and a real measured fact land in the same column and look identical after the write. Every team then reinvents "how much do we trust this?" in application code, differently in every layer. KNDB pushes that distinction into the storage engine so it becomes an invariant, not a code-review checklist.
+    </p>
+    <div class="meta">
+      <span><strong>Substrate:</strong> Postgres 17 + ProvSQL 1.10.0</span>
+      <span><strong>Prototype:</strong> green on real Synthea data (11,637 patients)</span>
+      <span><strong>Repo:</strong> github.com/emailvenkatm/kndb</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="container">
+    <a href="#problem">The problem</a>
+    <a href="#idea">The idea</a>
+    <a href="#why">Why now</a>
+    <a href="#primitives">The 5 primitives</a>
+    <a href="#built">What we built</a>
+    <a href="#timeline">Timeline &amp; CIDR</a>
+    <a href="#related">How we differ</a>
+    <a href="#try">Try it</a>
+  </div>
+</nav>
+
+<main>
+
+<!-- ========================= THE PROBLEM ========================= -->
+<section id="problem">
+  <div class="container">
+    <div class="section-eyebrow">01 &middot; the problem</div>
+    <h2>Databases don't remember where facts came from</h2>
+    <p>
+      Almost every production database has one big open field for each attribute. An age is an age, a lab value is a lab value, an income is an income. Nothing in the schema says <em>how</em> that value got there. Whether it was measured, imputed, guessed by a model, aggregated from other rows, or copied from an unreliable partner: after the write, all of them read back the same.
+    </p>
+    <p>
+      That was tolerable when most writes came from careful humans and audited ETL. It stops being tolerable when the writers include LLM agents, ML enrichment pipelines, MCP tools with function-calling, and a dozen microservices that don't share a code-review process.
+    </p>
+
+    <h3>What actually breaks</h3>
+    <div class="compare">
+      <div class="card fail">
+        <div class="tag">Plain Postgres</div>
+        <p>Team A's ML pipeline imputes missing <code>hba1c</code> values (confidence 0.6) and writes them into the same <code>labs.hba1c</code> column as real lab results. Team B's clinical-trial screener queries <code>hba1c ≥ 6.5</code> and recruits patients whose "lab value" was a model's guess. Nothing in the DB stopped it. Nothing in the DB even knows.</p>
+      </div>
+      <div class="card pass">
+        <div class="tag">KNDB</div>
+        <p>The <code>hba1c</code> slot is registered as <code>observation</code>. When Team A's pipeline sends a write with epistemic kind <code>inference</code>, the write is rejected at trigger time with a specific error <code>KNDB R5: attribute hba1c is registered as observation, got inference</code>. The row never lands. The trial cohort stays clean.</p>
+      </div>
+    </div>
+
+    <p>
+      The failure has three shapes, and we see all three in the wild.
+    </p>
+    <ul>
+      <li><strong>Silent overwrite.</strong> A newer, worse claim replaces an older, better one and the loser vanishes.</li>
+      <li><strong>Confidence laundering.</strong> A 0.6-confidence prediction joins with a 0.95-confidence measurement and the query returns something that looks 0.95.</li>
+      <li><strong>Provenance loss.</strong> No one can answer "what did we believe on Tuesday?" without reading the write-ahead log by hand.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ========================= THE IDEA ========================= -->
+<section id="idea">
+  <div class="container">
+    <div class="section-eyebrow">02 &middot; the idea</div>
+    <h2>Make trust a first-class database primitive</h2>
+    <p>
+      KNDB is a Postgres extension. It changes what a fact is: every row carries an <strong>epistemic kind</strong> (observation, inference, derived), a <strong>confidence in [0,1]</strong>, a set of <strong>source facts</strong> it depends on, and two <strong>time ranges</strong> (when the fact was true in the world, when the database believed it).
+    </p>
+    <p>
+      Around that shape, five write-time and query-time rules turn the schema into a trust contract. All five are enforced by the engine, in triggers and provenance semirings, not by convention or a linter. If the invariant is worth caring about, you can't forget it, because the database will forget it for you.
+    </p>
+    <div class="callout">
+      <div class="tag">The narrow claim</div>
+      <p>No relational or graph database engine ships a first-class epistemic-kind system with propagation semantics baked into query evaluation. KNDB is a minimal prototype that does, tested against real Synthea clinical data, with honest overhead numbers.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========================= WHY NOW ========================= -->
+<section id="why">
+  <div class="container">
+    <div class="section-eyebrow">03 &middot; why this matters now</div>
+    <h2>Three forces make this the right moment</h2>
+
+    <h3>1. Agents are writing to your database</h3>
+    <p>
+      Every serious agent framework in 2026 stores memory. Zep, Graphiti, LangGraph checkpoints, MCP servers, coding agents with tool access. When these writes flow into a shared operational database, there is no schema-level distinction between what the agent knows and what the agent guessed. That's a compliance problem waiting to happen, and a reasoning problem happening already.
+    </p>
+
+    <h3>2. Regulated industries want provenance receipts</h3>
+    <p>
+      Healthcare (HIPAA, FDA guidance on ML-derived clinical decisions), finance (FCA/CFPB on algorithmic underwriting), pharma (21 CFR Part 11 audit trails). None of these accept "the code was reviewed" as evidence. They want a query that returns what we believed at a specific point in time, from what evidence, with what confidence.
+    </p>
+
+    <h3>3. The academic ground is fertile but the engine ground is empty</h3>
+    <p>
+      ProvSQL (VLDB 2018, actively maintained through 2026) gives us provenance semirings inside Postgres. TypeDB has schema-level kinds but no confidence propagation. XTDB and Datomic have bitemporal but no epistemic type. MemIR (arXiv 2605.25869, May 2026) has typed atoms but sits in an agent-memory runtime that lives above the database, so pulling the runtime pulls the guarantee. Nobody has put the whole thing into the storage engine. That's the gap KNDB fills.
+    </p>
+  </div>
+</section>
+
+<!-- ========================= 5 PRIMITIVES ========================= -->
+<section id="primitives">
+  <div class="container">
+    <div class="section-eyebrow">04 &middot; the five primitives, with examples</div>
+    <h2>Five write-time-checked rules that add up to trust</h2>
+    <p>
+      Each of these is a real, running piece of engine code in the repo. Each has failing-test-first evidence that the engine actually catches the bug the rule claims to catch. All five stack: the paper's contribution is the coherent package.
+    </p>
+
+    <!-- ---------------- Primitive 1 ---------------- -->
+    <div class="primitive">
+      <div class="num">1</div>
+      <h3>Epistemic typing</h3>
+      <p class="oneliner">Every fact is <code>observation</code>, <code>inference</code>, or <code>derived</code>. The database refuses to lose the distinction.</p>
+      <p>
+        We define a Postgres ENUM domain <code>kndb.epistemic_kind</code> and put every fact table on it. A slot registry says "the <code>hba1c</code> attribute must be <code>observation</code>." A trigger checks that on every insert and update. <code>derived</code> facts additionally must reference at least one source fact by ID, so aggregates cannot lie about their inputs.
+      </p>
+
+      <h4>Examples</h4>
+
+      <div class="example">
+        <div class="domain">Healthcare (the one we actually ran)</div>
+        <p>An ML pipeline imputes a missing HbA1c value from other labs and writes it into <code>labs.hba1c</code> because "we need something there." Plain Postgres stores it silently. KNDB rejects the write: <code>hba1c</code> is registered as an observation-typed slot, and the pipeline's row is an inference. The trial cohort stays clean.</p>
+      </div>
+
+      <div class="example">
+        <div class="domain">Lending &amp; underwriting</div>
+        <p>Applicant leaves income blank; a model estimates $85k (confidence 0.6). Someone pushes it into <code>applications.annual_income</code>. The underwriter joins income with credit score and approves the loan. KNDB requires the model output to be typed <code>inference</code>, which the underwriter's join surface can then filter or downgrade.</p>
+      </div>
+
+      <div class="example">
+        <div class="domain">CRM enrichment</div>
+        <p>A vendor enrichment API guesses a company's headcount from LinkedIn. The sales team writes that into <code>accounts.employees</code> alongside verified numbers from procurement. Six months later nobody remembers which is which. KNDB never lets them share the slot.</p>
+      </div>
+
+      <div class="example">
+        <div class="domain">Agent memory</div>
+        <p>An agent stores "user said their birthday is March 5" (observation) and later infers "user is a Pisces" (derived). If those go in the same column, a future prompt can quote the derivation as if the user said it. KNDB refuses to store them as the same kind.</p>
+      </div>
+    </div>
+
+    <!-- ---------------- Primitive 2 ---------------- -->
+    <div class="primitive">
+      <div class="num">2</div>
+      <h3>Confidence propagation</h3>
+      <p class="oneliner">The engine computes joined confidence via the <strong>Viterbi semiring</strong> across query joins. No app-side arithmetic.</p>
+      <p>
+        Every fact carries a numeric confidence in [0,1] and a matching ProvSQL provenance token. When you join two facts, the engine computes the combined confidence as their product (Viterbi = multiply-select). A 0.95 observation joined with a 0.6 inference emerges as 0.57, and it says so on the result row. Nobody has to remember to multiply anything.
+      </p>
+
+      <h4>Examples</h4>
+
+      <div class="example">
+        <div class="domain">Clinical trial screening</div>
+        <p>Trial T2DM-06 wants patients where "HbA1c is high AND the model says diabetic." The join between a 0.95 observation and a 0.7 model prediction should return 0.665. On our real Synthea run, KNDB returned 0.665 exactly; a naive baseline using <code>MIN(confidence)</code> returned 0.7, silently over-crediting the model.</p>
+      </div>
+
+      <div class="example">
+        <div class="domain">Fraud detection</div>
+        <p>A transaction is flagged risky because it matches an IP-reputation signal (0.8) AND a model score (0.6). The team's dashboard shows "risk = 0.6" (min). The real Viterbi risk is 0.48. That's the difference between escalating a case and closing it.</p>
+      </div>
+
+      <div class="example">
+        <div class="domain">RAG citations</div>
+        <p>A generated answer cites a retrieved document (retrieval_conf 0.9) and a model claim (generation_conf 0.7). The composite answer confidence should be 0.63. Every RAG stack reimplements this arithmetic in Python. In KNDB it's the join.</p>
+      </div>
+
+      <div class="example">
+        <div class="domain">Recommendations</div>
+        <p>"User is engaged" = model prediction (0.65) x last-week click observation (0.95). Naive systems report the max, the min, or a weighted average that varies by which team asked. KNDB always says 0.62.</p>
+      </div>
+    </div>
+
+    <!-- ---------------- Primitive 3 ---------------- -->
+    <div class="primitive">
+      <div class="num">3</div>
+      <h3>Write-time conflict detection</h3>
+      <p class="oneliner">A contradicting claim never silently overwrites the prior one. The loser is preserved in an audit table.</p>
+      <p>
+        When a new fact conflicts with an existing fact on the same entity in overlapping valid-time, a trigger either (a) closes the loser's system-time window and inserts the new row while copying the loser into <code>kndb_audit</code>, or (b) rejects the new write outright, depending on a per-attribute policy. Silent overwrite is not possible under either policy.
+      </p>
+
+      <h4>Examples</h4>
+
+      <div class="example">
+        <div class="domain">User profile</div>
+        <p>User's address is on file. A support script updates it from a typo in a customer email. Later the shipping team asks "what address did we have last Tuesday?" With plain Postgres, that history is gone. With KNDB, the audit table has the loser.</p>
+      </div>
+
+      <div class="example">
+        <div class="domain">Inventory</div>
+        <p>Two warehouse teams update stock count within seconds. The last write wins and the first team is wrong-blamed for a discrepancy. KNDB either preserves both (invalidate policy) or refuses the second (reject policy) with a specific error saying "you conflict with row X."</p>
+      </div>
+
+      <div class="example">
+        <div class="domain">Clinical diagnosis</div>
+        <p>Two clinicians enter conflicting diagnoses for overlapping periods. Plain EHR shows whichever wrote last. KNDB keeps both, with the audit trail visible to reviewers, so the resolution conversation happens on data, not on tickets.</p>
+      </div>
+
+      <div class="example">
+        <div class="domain">Contact management</div>
+        <p>Marketing has one phone number, sales has another, both are "current." KNDB refuses to pretend both are current at once. Either they get different valid-time ranges (which team called on which date) or one becomes an inference with lower confidence.</p>
+      </div>
+    </div>
+
+    <!-- ---------------- Primitive 4 ---------------- -->
+    <div class="primitive">
+      <div class="num">4</div>
+      <h3>Bitemporal validity</h3>
+      <p class="oneliner">Every fact has a <em>valid time</em> (when it was true in the world) and a <em>system time</em> (when we recorded it). "As of date X" is a stock query.</p>
+      <p>
+        Both times are Postgres <code>tstzrange</code> columns. A GiST exclusion constraint (compatible with ProvSQL's provenance column, verified on real data) prevents overlapping valid-time on the same attribute for the same entity. Two SQL functions, <code>kndb.as_of_valid()</code> and <code>kndb.as_of_believed()</code>, answer the two natural historical questions in one line.
+      </p>
+
+      <h4>Examples</h4>
+
+      <div class="example">
+        <div class="domain">Regulatory audit</div>
+        <p>"What was our AML risk assessment for this customer on January 3rd?" With plain Postgres and mutable rows, the answer requires an offline log query. With KNDB, it's a select.</p>
+      </div>
+
+      <div class="example">
+        <div class="domain">Insurance policy</div>
+        <p>Policy is effective April 1 to June 30 but was recorded on February 15. When the claim comes in for a May incident, was the coverage in force? Two different times, two different questions, both need to be answered.</p>
+      </div>
+
+      <div class="example">
+        <div class="domain">Agent memory (Zep-style)</div>
+        <p>"What did the agent believe about the user last Tuesday, based only on what it had been told by then?" is a common question during agent debugging. Plain agent-memory systems store one snapshot. KNDB answers it directly.</p>
+      </div>
+
+      <div class="example">
+        <div class="domain">Backfills and corrections</div>
+        <p>A batch job discovers three months of upstream data was wrong and corrects the values. Everyone downstream should see the correction, but historical reports run on the old values must still reproduce their old results. Bitemporal makes both true at the same time.</p>
+      </div>
+    </div>
+
+    <!-- ---------------- Primitive 5 ---------------- -->
+    <div class="primitive">
+      <div class="num">5</div>
+      <h3>Progressive-depth queries</h3>
+      <p class="oneliner">A single knob controls how much to trust: depth 0 returns only observations; depth 1 adds inferences; depth 2 adds derived aggregates. Recall goes up, average confidence goes down, monotonically.</p>
+      <p>
+        <code>kndb.expand(entity_id, depth)</code> is a set-returning function. The caller picks the trade-off explicitly per query. The paper's claim, tested on real data, is that recall never decreases and average confidence never increases as depth grows. That's a mathematical property of the epistemic kinds, not a hope.
+      </p>
+
+      <h4>Examples</h4>
+
+      <div class="example">
+        <div class="domain">Trial screening (strict vs broad)</div>
+        <p>The clinical protocol requires observed HbA1c only: depth 0. The recruitment team's "possible candidates" dashboard is willing to accept model-predicted diabetics: depth 1. The same query, one integer changes.</p>
+      </div>
+
+      <div class="example">
+        <div class="domain">Support ticket triage</div>
+        <p>Emergency queue only looks at observations from the customer (they explicitly said the outage is affecting them). Broader queue also includes model-inferred impact. Broadest queue includes derived aggregates like "this account's error rate is up 3x."</p>
+      </div>
+
+      <div class="example">
+        <div class="domain">Content moderation</div>
+        <p>Depth 0: user reports. Depth 1: model-flagged posts. Depth 2: derived signals like account age percentiles. Reviewers can pick their confidence appetite per shift.</p>
+      </div>
+
+      <div class="example">
+        <div class="domain">Search &amp; recommendations</div>
+        <p>Rank first-party click observations before hovers before model inferences before "similar users liked." A single query returns them tagged with their kind, so ranking code doesn't have to reconstruct the hierarchy.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================= WHAT WE BUILT ========================= -->
+<section id="built">
+  <div class="container">
+    <div class="section-eyebrow">05 &middot; what we've actually built</div>
+    <h2>Prototype status <span class="status-badge">Green</span></h2>
+    <p>
+      Everything below runs today, with real data, under CI, on a real GitHub-hosted runner. No mocks. No fabricated numbers.
+    </p>
+
+    <h3>Engine</h3>
+    <ul class="check">
+      <li>Five primitives implemented in ~600 lines of SQL + PL/pgSQL under <code>engine/</code>.</li>
+      <li>15 sub-tests across 7 files, all green, every write-time rule proved by a failing test made to pass.</li>
+      <li>Runs on Postgres 17.10 + ProvSQL 1.10.0, pinned by SHA256 in the compose file.</li>
+    </ul>
+
+    <h3>Real-data demo</h3>
+    <ul class="check">
+      <li>Synthea v4.0.0 generates 11,637 synthetic patients (SHA256-verified download).</li>
+      <li>Loaded into typed <code>kndb.fact</code>: 544,349 observations, 4,999 inferences (synthesized model predictions, mean confidence 0.7047), 16,239 derived aggregates.</li>
+      <li>Trial T2DM-06 screening returns 492 obs-eligible patients, 2,495 candidate join rows, top-5 joined Viterbi confidence 0.9025.</li>
+      <li>Attack: the "model imputes HbA1c into an obs-typed slot" scenario runs on a real patient with no HbA1c reading; KNDB rejects it at write time with rule R5. Row never lands.</li>
+    </ul>
+
+    <h3>Honest benchmark</h3>
+    <p>Four baselines: KNDB, plain Postgres, Python-app-layer guards, hand-rolled trigger suite (steelman). Measured natively on ARM64 (Homebrew Postgres 17 + ProvSQL built from source, no emulation) so absolute numbers are quotable.</p>
+    <table>
+      <thead>
+        <tr><th></th><th>Adversarial catch</th><th>Confidence drift</th><th>Guard LOC</th><th>p50 latency</th><th>Throughput</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>KNDB</strong></td>
+          <td class="check">70 / 70</td>
+          <td class="check">0.000 (fp noise)</td>
+          <td>150</td>
+          <td>68 μs (empty) / 70 μs (Synthea-loaded)</td>
+          <td>13,150 rps / 5,597 rps</td>
+        </tr>
+        <tr>
+          <td>Plain Postgres</td>
+          <td class="cross">0 / 70</td>
+          <td class="cross">0.210</td>
+          <td>0</td>
+          <td>&mdash;</td>
+          <td>&mdash;</td>
+        </tr>
+        <tr>
+          <td>App-layer guards</td>
+          <td class="cross">30 / 70</td>
+          <td class="cross">0.210</td>
+          <td>41</td>
+          <td>&mdash;</td>
+          <td>&mdash;</td>
+        </tr>
+        <tr>
+          <td>Hand-rolled triggers</td>
+          <td class="check">70 / 70</td>
+          <td class="check">0.000 (fp noise)</td>
+          <td>124</td>
+          <td>60 μs / 57 μs</td>
+          <td>14,912 rps / 15,559 rps</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      Two honest findings from real numbers, both worth reporting in the paper:
+    </p>
+    <ol>
+      <li><strong>The steelman ties on correctness.</strong> A careful hand-rolled trigger suite gets the same 70/70 catch and the same exact confidence numbers as KNDB. Our story is not "no one else can do this." It is "here is what those primitives look like as a coherent, tested package, so nobody has to reimplement them per project."</li>
+      <li><strong>KNDB throughput drops with table size, the steelman does not.</strong> On the 565k-row Synthea database, KNDB does 5,597 writes/sec; the steelman does 15,559. The gap comes from ProvSQL's <code>set_prob</code> map growing with the table. That is the honest cost of engine-computed confidence propagation, and the steelman avoids it by not implementing propagation at all.</li>
+    </ol>
+
+    <h3>CI, reproducibility, and infra</h3>
+    <ul class="check">
+      <li>GitHub Actions runs bootstrap, engine apply, both smoke tests, and all 5 primitive tests on every push. 5 consecutive green runs so far.</li>
+      <li>One command reproduces the entire pipeline: <code>make reproduce</code>.</li>
+      <li>Image, extension, Python, seed, kernel and CPU governor all logged into <code>bench/results/manifest.json</code> per run.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ========================= TIMELINE & CIDR ========================= -->
+<section id="timeline">
+  <div class="container">
+    <div class="section-eyebrow">06 &middot; timeline &amp; CIDR 2027</div>
+    <h2>Where we submit, when we submit, what's left</h2>
+    <p>
+      CIDR (Conference on Innovative Data Systems Research) is the right venue for this paper. It rewards small, working systems that make a sharp claim about how data systems should evolve. Six-page limit forces the argument to be crisp. Historically it accepts vision-plus-prototype papers that don't have to beat the whole world on TPC-H.
+    </p>
+
+    <div class="timeline">
+      <div class="step done">
+        <div class="date">2026-06-30</div>
+        <div class="title">Plan approved, ProvSQL green-lit, scope narrowed</div>
+        <div class="body">Landscape scan against MemIR, ATCH, Zep, Graphiti, TypeDB, XTDB. Thesis narrowed to "no engine ships epistemic-kind plus propagation."</div>
+      </div>
+      <div class="step done">
+        <div class="date">2026-07-01</div>
+        <div class="title">Prototype complete, all three honesty gaps closed</div>
+        <div class="body">All 5 primitives implemented, 15/15 tests green, real Synthea demo runs end-to-end, native benchmark quotable, CI green on hosted runner.</div>
+      </div>
+      <div class="step now">
+        <div class="date">now &mdash; 2026-08-04</div>
+        <div class="title">Paper draft, screencast, artifact evaluation prep</div>
+        <div class="body">Write the 6-page paper. Human-written intro, contributions, limitations. Record a 60-second demo screencast. Verify every citation before submission (arXiv now bans authors for hallucinated references).</div>
+      </div>
+      <div class="step">
+        <div class="date">2026-08-04</div>
+        <div class="title">CIDR 2027 submission deadline</div>
+        <div class="body">Verified from cidrdb.org/cidr2027/cfp.html: 6 pages including references, ACM sigconf double-column, 23:59 Pacific.</div>
+      </div>
+      <div class="step">
+        <div class="date">2026-10-06</div>
+        <div class="title">Notification</div>
+        <div class="body">Accept, reject, or shepherd.</div>
+      </div>
+      <div class="step">
+        <div class="date">2027-01-24 to 27</div>
+        <div class="title">CIDR 2027, Amsterdam</div>
+        <div class="body">Present, meet, hire, learn where the next paper goes.</div>
+      </div>
+    </div>
+
+    <h3>What's left before submission</h3>
+    <ul class="check">
+      <li class="pending">Paper draft (6 pages): intro, contributions, five primitives, evaluation, related work, limitations. Written by humans; AI-assisted only in mechanical sections.</li>
+      <li class="pending">Screencast of the 60-second demo for the artifact.</li>
+      <li class="pending">30-rep native benchmark for tighter statistics (current is 10-rep).</li>
+      <li class="pending">Re-verify every citation on the day of submission.</li>
+      <li>Reproducibility artifact: already ready via <code>make reproduce</code>.</li>
+      <li>CI green: already green.</li>
+      <li>Threat model, AI-assistance disclosure, related-work table: already written.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ========================= RELATED WORK ========================= -->
+<section id="related">
+  <div class="container">
+    <div class="section-eyebrow">07 &middot; how KNDB differs from adjacent systems</div>
+    <h2>Everyone else has some of it. Nobody has all of it in the engine.</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>System</th>
+          <th>Epistemic kind</th>
+          <th>Confidence propagation</th>
+          <th>Write-time conflict</th>
+          <th>Bitemporal</th>
+          <th>Progressive depth</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>KNDB</strong></td>
+          <td class="check">engine</td>
+          <td class="check">engine (Viterbi)</td>
+          <td class="check">engine</td>
+          <td class="check">engine</td>
+          <td class="check">engine</td>
+        </tr>
+        <tr>
+          <td>Plain Postgres</td>
+          <td class="cross">no</td>
+          <td class="cross">no</td>
+          <td class="cross">no</td>
+          <td class="cross">no</td>
+          <td class="cross">no</td>
+        </tr>
+        <tr>
+          <td>TypeDB</td>
+          <td class="cross">kind only, no epistemics</td>
+          <td class="cross">no</td>
+          <td class="cross">no</td>
+          <td class="cross">app</td>
+          <td class="cross">no</td>
+        </tr>
+        <tr>
+          <td>XTDB / Datomic</td>
+          <td class="cross">no</td>
+          <td class="cross">no</td>
+          <td class="cross">app</td>
+          <td class="check">engine</td>
+          <td class="cross">no</td>
+        </tr>
+        <tr>
+          <td>Zep / Graphiti</td>
+          <td class="cross">no</td>
+          <td class="cross">app-stored, not enforced</td>
+          <td class="cross">close-not-delete</td>
+          <td class="check">engine</td>
+          <td class="cross">no</td>
+        </tr>
+        <tr>
+          <td>ProvSQL</td>
+          <td class="cross">no</td>
+          <td class="check">semiring engine</td>
+          <td class="cross">no</td>
+          <td class="cross">library</td>
+          <td class="cross">no</td>
+        </tr>
+        <tr>
+          <td>MemIR (2605.25869)</td>
+          <td class="cross">runtime, not engine</td>
+          <td class="cross">no</td>
+          <td class="cross">runtime</td>
+          <td class="cross">no</td>
+          <td class="cross">no</td>
+        </tr>
+        <tr>
+          <td>ATCH (2603.13603)</td>
+          <td class="cross">theory only</td>
+          <td class="cross">theory only</td>
+          <td class="cross">theory only</td>
+          <td class="cross">theory only</td>
+          <td class="cross">theory only</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      Two neighbors reviewers will pattern-match against and we must differentiate against explicitly:
+    </p>
+    <ul>
+      <li><strong>MemIR</strong> (arXiv 2605.25869, May 2026) ships typed atoms with write-time claim authorization in an <em>agent-memory runtime</em>. Pull the runtime and the guarantee is gone. KNDB puts the same idea in the storage engine, so it survives every client.</li>
+      <li><strong>ATCH / Equivalence Theorem</strong> (arXiv 2603.13603, Feb 2026) formalizes the four-property completeness (n-ary + temporal + uncertainty + causal). It is a theorem paper. KNDB is the shipping mechanism, with honest overhead numbers on real data.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ========================= TRY IT ========================= -->
+<section id="try">
+  <div class="container">
+    <div class="section-eyebrow">08 &middot; try it</div>
+    <h2>Fifteen minutes and you have it running</h2>
+    <pre><code>git clone git@github.com:emailvenkatm/kndb.git
+cd kndb
+make up            # starts isolated Postgres + ProvSQL on port 5433
+make engine        # applies engine/*.sql
+make test          # 15/15 sub-tests pass
+make demo          # the 60-second trust story</code></pre>
+
+    <p>
+      For the real clinical scenario on 11,637 Synthea patients:
+    </p>
+    <pre><code>bash data/generate.sh       # downloads Synthea v4.0.0 (SHA256 verified), takes ~10 min
+python3 data/synthesize_labels.py
+bash data/load_postgres.sh
+bash demo/demo_clinical.sh  # attack + eligibility screening on real data</code></pre>
+
+    <p>
+      For the benchmark:
+    </p>
+    <pre><code>bash bench/run_native.sh       # native ARM64 (no emulation) if brew Postgres is installed
+bash bench/run_synthea.sh      # same benchmark on 565k Synthea-preloaded rows</code></pre>
+
+    <p>
+      Everything else is in <code>STATUS.md</code> at the repo root, which is the "safe to quote in the paper" reference.
+    </p>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="container">
+    <p>KNDB &middot; Knowledge-Native Database prototype &middot; CIDR 2027 submission in progress</p>
+    <p>Apache 2.0 &middot; <a href="https://github.com/emailvenkatm/kndb">github.com/emailvenkatm/kndb</a></p>
+  </div>
+</footer>
+
+</body>
+</html>
