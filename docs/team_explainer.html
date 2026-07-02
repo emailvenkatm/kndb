@@ -431,7 +431,7 @@
     </p>
     <div class="callout">
       <div class="tag">The narrow claim</div>
-      <p>No relational or graph database engine ships a first-class epistemic-kind system with confidence propagation baked into query evaluation. KNDB is a minimal prototype that does, tested against real Synthea clinical data, with honest overhead numbers.</p>
+      <p>No relational or graph database engine ships a first-class epistemic-kind system with confidence propagation baked into query evaluation. KNDB is a minimal prototype that does, tested against real Synthea clinical data with measured overhead.</p>
     </div>
   </div>
 </section>
@@ -524,8 +524,8 @@
     </div>
 
     <div class="callout">
-      <div class="tag">One example lands hardest with a non-technical audience</div>
-      <p><strong>eGFR.</strong> Everyone in the room has a kidney number on their last physical. It looks like a lab result. It is not measured; it is calculated by an equation that quietly changed between 2021 and 2024, and the same LOINC code was used before and after. When you show a non-technical team the same patient's eGFR jumping 8 points overnight with no change in creatinine (only an equation swap the LIS did), the point about "the DB doesn't know what kind of number this is" lands in one slide.</p>
+      <div class="tag">The one to remember: eGFR</div>
+      <p>Every patient's kidney number on their last physical is an eGFR. It looks like a lab result. It is not measured; it is calculated by an equation that quietly changed between 2021 and 2024, and the same LOINC code was used before and after. The same patient's eGFR can jump 8 points overnight with no change in creatinine, purely because the LIS swapped equations. The database has no way to say what kind of number this is.</p>
     </div>
   </div>
 </section>
@@ -536,7 +536,7 @@
     <div class="section-eyebrow">03 &middot; when it made the news</div>
     <h2>When the same failure mode was reported at scale</h2>
     <p>
-      Same underlying problem &mdash; the DB forgot which values were measured &mdash; blown up to lawsuits, retractions, and regulator actions. Each URL fetched and verified 2026-07-02.
+      Same underlying problem &mdash; the database forgot which values were measured &mdash; blown up to lawsuits, retractions, and regulator actions. Every URL below was checked; the full ten-case detail is linked at the bottom of this section.
     </p>
 
     <div class="card">
@@ -579,7 +579,7 @@
       <p>FDA's <a href="https://www.fda.gov/regulatory-information/search-fda-guidance-documents/marketing-submission-recommendations-predetermined-change-control-plan-artificial-intelligence">Predetermined Change Control Plan guidance (Feb 2025)</a> and ONC's <a href="https://www.mintz.com/insights-center/viewpoints/2146/2024-01-08-hhs-onc-hti-1-final-rule-introduces-new-transparency">HTI-1 DSI rule (Jan 2025)</a> both regulate the model. Neither requires that a value written back to the chart carry a persistent epistemic-kind flag. That is the storage-layer gap KNDB fills.</p>
     </div>
 
-    <p style="font-size: 0.88rem; color: var(--muted); margin-top: 20px;">The full list of ten verified incidents with confidence checks is in <a href="research_incidents.html">docs/research_incidents.html</a>.</p>
+    <p style="font-size: 0.88rem; color: var(--muted); margin-top: 20px;">Full ten-case detail: <a href="research_incidents.html">research_incidents.html</a>.</p>
   </div>
 </section>
 
@@ -875,10 +875,10 @@ docs/            this explainer, related-work, research incidents
         </tr>
       </tbody>
     </table>
-    <p style="font-size: 0.9rem;">Two honest findings the paper will state directly:</p>
+    <p style="font-size: 0.9rem;">Two findings from the benchmark worth calling out:</p>
     <ol style="font-size: 0.94rem;">
-      <li>The steelman catches every adversarial write with 124 LOC of hand-rolled triggers. The paper's story is not "no one else can do this." It is "here are the primitives as a coherent tested package so nobody has to reimplement them per project."</li>
-      <li>KNDB write throughput drops with table size (13,150 to 5,597 rps at 565k rows). The steelman is size-invariant. The gap is ProvSQL's <code>set_prob</code> map growing with the table &mdash; the honest cost of engine-computed confidence propagation.</li>
+      <li>A hand-rolled trigger suite can catch every adversarial write in 124 lines of PL/pgSQL. KNDB's value is that those primitives ship as one coherent tested package, so every project doesn't reimplement them from scratch (and get subtly different answers each time).</li>
+      <li>KNDB write throughput drops with table size (13,150 to 5,597 rps at 565k rows). The steelman is size-invariant. The gap is ProvSQL's <code>set_prob</code> map growing with the table &mdash; the measurable cost of engine-computed confidence propagation.</li>
     </ol>
   </div>
 </section>
@@ -898,13 +898,13 @@ docs/            this explainer, related-work, research incidents
       </div>
       <div class="step done">
         <div class="date">2026-07-01</div>
-        <div class="title">Prototype complete, all honesty gaps closed</div>
-        <div class="body">All 5 primitives implemented, 15/15 tests green, real Synthea demo runs end-to-end, native benchmark quotable, CI green on hosted runner.</div>
+        <div class="title">Prototype complete, real-data demo working</div>
+        <div class="body">All 5 primitives implemented, 15/15 tests green, real Synthea demo runs end-to-end, native benchmark measured, CI green on hosted runner.</div>
       </div>
       <div class="step now">
         <div class="date">now &mdash; 2026-08-04</div>
         <div class="title">Paper draft, screencast, artifact evaluation prep</div>
-        <div class="body">Write the 6-page paper. Intro, contributions, limitations written by humans (per LLM-tell rules). Verify every citation before submission (arXiv now bans authors 1 year for hallucinated refs).</div>
+        <div class="body">Write the 6-page paper: intro, contributions, five primitives, evaluation, related work, limitations. Record a screencast of the 60-second demo. Verify every citation the day before submission (arXiv now bans authors for one year for hallucinated references).</div>
       </div>
       <div class="step">
         <div class="date">2026-08-04</div>
@@ -955,7 +955,7 @@ bash demo/demo_clinical.sh  # attack + eligibility screening on real data</code>
     <pre><code>bash bench/run_native.sh       # native (no emulation) if brew Postgres is installed
 bash bench/run_synthea.sh      # same benchmark on 565k Synthea-preloaded rows</code></pre>
 
-    <p style="font-size: 0.9rem; color: var(--muted); margin-top: 20px;">Everything else &mdash; what's safe to quote in the paper, what's still in progress &mdash; is in <code>STATUS.md</code> at the repo root.</p>
+    <p style="font-size: 0.9rem; color: var(--muted); margin-top: 20px;">A running status of what is measured vs what is still in progress is in <code>STATUS.md</code> at the repo root.</p>
   </div>
 </section>
 
