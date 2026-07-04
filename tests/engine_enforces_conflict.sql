@@ -241,5 +241,98 @@ BEGIN
   RAISE NOTICE 'PASS T3.9: NEW landed by arrival, audit reason=contradicted_same_rank';
 END $$;
 
+-- T3.10: specificity convention: entity-specific (100) beats batch-default (0).
+-- Prior arrives from a nightly batch loader as specificity=0. A follow-up
+-- per-entity write arrives at specificity=100 with a different value.
+-- Same kind INFERRED. NEW wins; prior audited with reason=specificity.
+-- Documents the plan_v2 convention (0=batch, 100=entity, 200=adjudicated).
+\echo '-- T3.10 entity-specific (100) beats batch-default (0)'
+INSERT INTO kndb.fact (entity_id, attribute, value, epistemic_kind, confidence, specificity, valid_time)
+VALUES (18, 'risk_tier', 'medium', 'INFERRED', 0.70, 0,   tstzrange('2026-01-01', '2026-06-01', '[)'));
+INSERT INTO kndb.fact (entity_id, attribute, value, epistemic_kind, confidence, specificity, valid_time)
+VALUES (18, 'risk_tier', 'high',   'INFERRED', 0.70, 100, tstzrange('2026-02-01', '2026-05-01', '[)'));
+DO $$
+DECLARE alive_n int; alive_val text; alive_spec smallint; audit_n int;
+BEGIN
+  SELECT count(*) INTO alive_n FROM kndb.fact
+  WHERE entity_id=18 AND attribute='risk_tier' AND upper(sys_time) = 'infinity';
+  SELECT value, specificity INTO alive_val, alive_spec FROM kndb.fact
+  WHERE entity_id=18 AND attribute='risk_tier' AND upper(sys_time) = 'infinity'
+  LIMIT 1;
+  SELECT count(*) INTO audit_n FROM kndb_audit.evicted_fact
+  WHERE reason='specificity'
+    AND (original_row->>'entity_id')::int = 18
+    AND original_row->>'attribute' = 'risk_tier';
+  IF alive_n <> 1 OR alive_val <> 'high' OR alive_spec <> 100 OR audit_n < 1 THEN
+    RAISE EXCEPTION 'FAIL T3.10: alive_n=% val=% spec=% audit_n=%',
+      alive_n, alive_val, alive_spec, audit_n;
+  END IF;
+  RAISE NOTICE 'PASS T3.10: entity-specific (100) beat batch-default (0)';
+END $$;
+
+-- T3.11: arrival order irrelevant on the specificity axis.
+-- Prior is entity-specific (100). A batch-default (0) NEW arrives with a
+-- different value. NEW is REFUSED; prior stays alive; the batch write
+-- never lands (equivalent to T3.4 pattern but for the specificity dimension
+-- rather than the kind dimension). No audit row expected under the reject
+-- path (autonomous transaction limitation, scoped-out).
+\echo '-- T3.11 arrival order irrelevant: batch-default (0) refused against entity-specific (100)'
+INSERT INTO kndb.fact (entity_id, attribute, value, epistemic_kind, confidence, specificity, valid_time)
+VALUES (19, 'risk_tier', 'high',   'INFERRED', 0.70, 100, tstzrange('2026-01-01', '2026-06-01', '[)'));
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO kndb.fact (entity_id, attribute, value, epistemic_kind, confidence, specificity, valid_time)
+    VALUES (19, 'risk_tier', 'medium', 'INFERRED', 0.70, 0, tstzrange('2026-02-01', '2026-05-01', '[)'));
+    RAISE EXCEPTION 'FAIL T3.11: outranked batch-default write should have raised';
+  EXCEPTION WHEN check_violation THEN
+    -- expected: specificity 0 is outranked by specificity 100
+    NULL;
+  END;
+END $$;
+DO $$
+DECLARE alive_n int; alive_val text; alive_spec smallint;
+BEGIN
+  SELECT count(*) INTO alive_n FROM kndb.fact
+  WHERE entity_id=19 AND attribute='risk_tier' AND upper(sys_time) = 'infinity';
+  SELECT value, specificity INTO alive_val, alive_spec FROM kndb.fact
+  WHERE entity_id=19 AND attribute='risk_tier' AND upper(sys_time) = 'infinity'
+  LIMIT 1;
+  IF alive_n <> 1 OR alive_val <> 'high' OR alive_spec <> 100 THEN
+    RAISE EXCEPTION 'FAIL T3.11: expected 1 live entity-specific row, got n=% val=% spec=%',
+      alive_n, alive_val, alive_spec;
+  END IF;
+  RAISE NOTICE 'PASS T3.11: batch-default refused, entity-specific prior survived';
+END $$;
+
+-- T3.12: adjudicated override (200) beats normal entity-specific (100).
+-- Prior is a normal per-entity MEASURED at specificity=100. An adjudicated
+-- correction lands at specificity=200 with a different value. Same kind
+-- MEASURED. NEW wins; prior audited with reason=specificity. Documents the
+-- human-override convention.
+\echo '-- T3.12 adjudicated override (200) beats entity-specific (100)'
+INSERT INTO kndb.fact (entity_id, attribute, value, epistemic_kind, confidence, specificity, valid_time)
+VALUES (20, 'address_zip', '02138', 'MEASURED', 0.95, 100, tstzrange('2026-01-01', '2026-06-01', '[)'));
+INSERT INTO kndb.fact (entity_id, attribute, value, epistemic_kind, confidence, specificity, valid_time)
+VALUES (20, 'address_zip', '02139', 'MEASURED', 0.95, 200, tstzrange('2026-02-01', '2026-05-01', '[)'));
+DO $$
+DECLARE alive_n int; alive_val text; alive_spec smallint; audit_n int;
+BEGIN
+  SELECT count(*) INTO alive_n FROM kndb.fact
+  WHERE entity_id=20 AND attribute='address_zip' AND upper(sys_time) = 'infinity';
+  SELECT value, specificity INTO alive_val, alive_spec FROM kndb.fact
+  WHERE entity_id=20 AND attribute='address_zip' AND upper(sys_time) = 'infinity'
+  LIMIT 1;
+  SELECT count(*) INTO audit_n FROM kndb_audit.evicted_fact
+  WHERE reason='specificity'
+    AND (original_row->>'entity_id')::int = 20
+    AND original_row->>'attribute' = 'address_zip';
+  IF alive_n <> 1 OR alive_val <> '02139' OR alive_spec <> 200 OR audit_n < 1 THEN
+    RAISE EXCEPTION 'FAIL T3.12: alive_n=% val=% spec=% audit_n=%',
+      alive_n, alive_val, alive_spec, audit_n;
+  END IF;
+  RAISE NOTICE 'PASS T3.12: adjudicated override (200) beat entity-specific (100)';
+END $$;
+
 ROLLBACK;
 \echo '== engine_enforces_conflict: all sub-tests PASS =='
