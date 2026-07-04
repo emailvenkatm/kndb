@@ -20,6 +20,13 @@ CREATE TABLE kndb.fact (
   epistemic_kind  kndb.epistemic_kind NOT NULL,
   confidence      kndb.confidence NOT NULL,
   sources         uuid[]        NOT NULL DEFAULT '{}',   -- fact_ids of upstream facts
+  specificity     smallint      NOT NULL DEFAULT 100
+    CHECK (specificity BETWEEN 0 AND 255),
+    -- Precedence tie-breaker below kind rank. Convention:
+    --   0   = batch/general default (nightly loader, imputation job)
+    --   100 = normal per-entity write (default)
+    --   > 100 = adjudicated correction / human override
+    -- Numeric so new levels can slot in without an ENUM migration.
   valid_time      tstzrange     NOT NULL,     -- when the world-fact holds
   sys_time        tstzrange     NOT NULL DEFAULT tstzrange(clock_timestamp(), 'infinity', '[)'),
   writer          text          NOT NULL DEFAULT current_user,

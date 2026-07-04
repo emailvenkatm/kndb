@@ -22,7 +22,7 @@ SET client_min_messages = 'notice';
 SELECT count(DISTINCT entity_id) AS obs_hba1c_ge_6_5
 FROM kndb.fact
 WHERE attribute = 'hba1c'
-  AND epistemic_kind = 'observation'
+  AND epistemic_kind = 'MEASURED'
   AND value::numeric >= 6.5
   AND upper(sys_time) = 'infinity';
 
@@ -34,7 +34,7 @@ SELECT
   round(min(confidence)::numeric, 4)       AS min_conf
 FROM kndb.fact
 WHERE attribute = 'is_diabetic'
-  AND epistemic_kind = 'inference'
+  AND epistemic_kind = 'INFERRED'
   AND upper(sys_time) = 'infinity';
 
 -- --- ATTACK: the ML pipeline tries to fill missing HbA1c with predictions ----
@@ -54,7 +54,7 @@ BEGIN
   FROM kndb.fact
   WHERE upper(sys_time) = 'infinity'
   GROUP BY entity_id
-  HAVING NOT bool_or(attribute = 'hba1c' AND epistemic_kind = 'observation')
+  HAVING NOT bool_or(attribute = 'hba1c' AND epistemic_kind = 'MEASURED')
   ORDER BY entity_id
   LIMIT 1;
 
@@ -62,7 +62,7 @@ BEGIN
 
   BEGIN
     INSERT INTO kndb.fact (entity_id, attribute, value, epistemic_kind, confidence, valid_time)
-    VALUES (target_entity, 'hba1c', '7.2', 'inference', 0.63,
+    VALUES (target_entity, 'hba1c', '7.2', 'INFERRED', 0.63,
             tstzrange('2026-06-01', 'infinity', '[)'));
     RAISE EXCEPTION 'FAIL: KNDB was supposed to reject the imputed-lab write';
   EXCEPTION WHEN check_violation THEN
@@ -75,7 +75,7 @@ END $$;
 SELECT count(*) AS phantom_inferences
 FROM kndb.fact
 WHERE attribute = 'hba1c'
-  AND epistemic_kind = 'inference';
+  AND epistemic_kind = 'INFERRED';
 
 -- --- Screening query --------------------------------------------------------
 \echo ''
@@ -89,10 +89,10 @@ SELECT count(*) AS candidates_examined
 FROM kndb.fact hba
 JOIN kndb.fact inf USING (entity_id)
 WHERE hba.attribute = 'hba1c'
-  AND hba.epistemic_kind = 'observation'
+  AND hba.epistemic_kind = 'MEASURED'
   AND hba.value::numeric >= 6.5
   AND inf.attribute = 'is_diabetic'
-  AND inf.epistemic_kind = 'inference'
+  AND inf.epistemic_kind = 'INFERRED'
   AND inf.value::int = 1
   AND upper(hba.sys_time) = 'infinity'
   AND upper(inf.sys_time) = 'infinity';
@@ -107,10 +107,10 @@ SELECT
 FROM kndb.fact hba
 JOIN kndb.fact inf USING (entity_id)
 WHERE hba.attribute = 'hba1c'
-  AND hba.epistemic_kind = 'observation'
+  AND hba.epistemic_kind = 'MEASURED'
   AND hba.value::numeric >= 6.5
   AND inf.attribute = 'is_diabetic'
-  AND inf.epistemic_kind = 'inference'
+  AND inf.epistemic_kind = 'INFERRED'
   AND inf.value::int = 1
   AND upper(hba.sys_time) = 'infinity'
   AND upper(inf.sys_time) = 'infinity'
@@ -128,9 +128,9 @@ LIMIT 5;
 SELECT depth, n
 FROM (VALUES
   (0, (SELECT count(*)::bigint FROM kndb.fact
-        WHERE upper(sys_time) = 'infinity' AND epistemic_kind = 'observation')),
+        WHERE upper(sys_time) = 'infinity' AND epistemic_kind = 'MEASURED')),
   (1, (SELECT count(*)::bigint FROM kndb.fact
-        WHERE upper(sys_time) = 'infinity' AND epistemic_kind IN ('observation','inference'))),
+        WHERE upper(sys_time) = 'infinity' AND epistemic_kind IN ('MEASURED','INFERRED'))),
   (2, (SELECT count(*)::bigint FROM kndb.fact
         WHERE upper(sys_time) = 'infinity'))
 ) v(depth, n)

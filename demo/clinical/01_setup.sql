@@ -36,14 +36,14 @@ $$ SELECT ('x' || substr(md5(p), 1, 8))::bit(32)::int $$;
 -- hba1c and bp_systolic are LAB observations. A model output that lands here
 -- is the attack we demonstrate.
 INSERT INTO kndb.slot_kind (attribute, required_kind) VALUES
-  ('hba1c',        'observation'),
-  ('systolic_bp',  'observation'),
-  ('diastolic_bp', 'observation'),
-  ('ldl',          'observation'),
-  ('fasting_glucose', 'observation'),
-  ('is_diabetic',  'inference'),
-  ('avg_systolic_bp_90d', 'derived'),
-  ('avg_hba1c_90d',       'derived');
+  ('hba1c',        'MEASURED'),
+  ('systolic_bp',  'MEASURED'),
+  ('diastolic_bp', 'MEASURED'),
+  ('ldl',          'MEASURED'),
+  ('fasting_glucose', 'MEASURED'),
+  ('is_diabetic',  'INFERRED'),
+  ('avg_systolic_bp_90d', 'DERIVED'),
+  ('avg_hba1c_90d',       'DERIVED');
 
 -- --- observations: real Synthea labs -----------------------------------------
 INSERT INTO kndb.fact (entity_id, attribute, value, epistemic_kind, confidence, valid_time)
@@ -51,7 +51,7 @@ SELECT
   kndb.patient_int(patient_id),
   code,
   value::text,
-  'observation'::kndb.epistemic_kind,
+  'MEASURED'::kndb.epistemic_kind,
   confidence::numeric(6,5),
   tstzrange(effective_time::timestamptz, 'infinity', '[)')
 FROM stage.observations
@@ -74,7 +74,7 @@ SELECT
   kndb.patient_int(i.patient_id),
   i.attribute,
   i.value::text,
-  'inference'::kndb.epistemic_kind,
+  'INFERRED'::kndb.epistemic_kind,
   LEAST(0.99, i.confidence)::numeric(6,5),   -- R4 forbids confidence >= 1.0
   ARRAY(
     SELECT m.kndb_id FROM _obs_id_map m WHERE m.stage_id = ANY(i.source_lab_ids)
@@ -91,7 +91,7 @@ SELECT
   kndb.patient_int(d.patient_id),
   d.attribute,
   d.value::text,
-  'derived'::kndb.epistemic_kind,
+  'DERIVED'::kndb.epistemic_kind,
   0.90::numeric(6,5),                        -- derived aggregates: conf < 1
   ARRAY(
     SELECT m.kndb_id FROM _obs_id_map m WHERE m.stage_id = ANY(d.sources)

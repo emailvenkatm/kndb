@@ -10,7 +10,7 @@ line number.
 KNDB is a Postgres + ProvSQL prototype that pushes five "trust" primitives
 down into the database engine instead of leaving them to the application. The
 narrowed thesis: no relational or graph database engine ships a first-class
-epistemic-kind system (`observation | inference | derived`) with confidence
+epistemic-kind system (`MEASURED | INFERRED | DERIVED`) with confidence
 propagation semantics baked into query evaluation. A low-confidence inference
 should not be able to silently emerge from a join looking like a ground
 observation, and an app should not be able to write a model guess into an
@@ -21,9 +21,9 @@ overhead of doing so.
 ## The five primitives
 
 **1. Epistemic typing.** Every fact carries a `kndb.epistemic_kind` value:
-`observation`, `inference`, or `derived`. The kind is an ENUM domain and
-tables typed `observation` reject rows whose `kind` column is anything else
-via a BEFORE-INSERT/UPDATE trigger. Rows typed `derived` must carry a
+`MEASURED`, `INFERRED`, or `DERIVED`. The kind is an ENUM domain and
+tables typed `MEASURED` reject rows whose `kind` column is anything else
+via a BEFORE-INSERT/UPDATE trigger. Rows typed `DERIVED` must carry a
 non-empty `sources uuid[]` and each source UUID must resolve to an existing
 fact — a second trigger enforces referential integrity across the array. The
 type distinction is engine-visible so downstream primitives (2, 5) can branch

@@ -26,9 +26,9 @@ from datetime import datetime, timedelta, timezone
 SEED = 42
 
 SLOTS = {
-    "hba1c": "observation",
-    "is_diabetic": "inference",
-    "bp_systolic": "observation",
+    "hba1c": "MEASURED",
+    "is_diabetic": "INFERRED",
+    "bp_systolic": "MEASURED",
 }
 
 # Attributes for which the harness pre-installs a `conflict_policy = reject`
@@ -70,7 +70,7 @@ def generate_setup(seed: int = SEED) -> list[dict]:
                 entity_id=eid,
                 attribute=attr,
                 value=str(110 + i),
-                epistemic_kind="observation",
+                epistemic_kind="MEASURED",
                 confidence=0.95,
                 sources=[],
                 valid_time=_range(_base_ts(0), _base_ts(60)),
@@ -85,7 +85,7 @@ def generate_setup(seed: int = SEED) -> list[dict]:
                 entity_id=eid,
                 attribute="temp_c",  # policy=reject also installed for temp_c
                 value=f"{36.5 + i * 0.05:.2f}",
-                epistemic_kind="observation",
+                epistemic_kind="MEASURED",
                 confidence=0.95,
                 sources=[],
                 valid_time=_range(_base_ts(0), _base_ts(60)),
@@ -110,7 +110,7 @@ def _bucket_epistemic_kind(rng: random.Random) -> list[dict]:
                 entity_id=1000 + i,
                 attribute="hba1c",
                 value=f"{rng.uniform(4.0, 9.0):.2f}",
-                epistemic_kind="inference",
+                epistemic_kind="INFERRED",
                 confidence=round(rng.uniform(0.3, 0.9), 3),
                 sources=[],
                 valid_time=_range(_base_ts(0), _base_ts(30)),
@@ -126,7 +126,7 @@ def _bucket_epistemic_kind(rng: random.Random) -> list[dict]:
                 entity_id=1100 + i,
                 attribute=f"agg_metric_{i}",
                 value=f"{rng.uniform(1, 100):.2f}",
-                epistemic_kind="derived",
+                epistemic_kind="DERIVED",
                 confidence=round(rng.uniform(0.5, 0.95), 3),
                 sources=[],
                 valid_time=_range(_base_ts(0), _base_ts(90)),
@@ -142,7 +142,7 @@ def _bucket_epistemic_kind(rng: random.Random) -> list[dict]:
                 entity_id=1200 + i,
                 attribute=f"ldl_{i}",
                 value=str(rng.randint(80, 200)),
-                epistemic_kind="observation",
+                epistemic_kind="MEASURED",
                 confidence=round(rng.uniform(0.8, 0.99), 3),
                 sources=[_rand_uuid(rng)],
                 valid_time=_range(_base_ts(0), _base_ts(30)),
@@ -158,7 +158,7 @@ def _bucket_epistemic_kind(rng: random.Random) -> list[dict]:
                 entity_id=1300 + i,
                 attribute=f"model_pred_{i}",
                 value="true",
-                epistemic_kind="inference",
+                epistemic_kind="INFERRED",
                 confidence=1.0,
                 sources=[],
                 valid_time=_range(_base_ts(0), _base_ts(365)),
@@ -174,7 +174,7 @@ def _bucket_epistemic_kind(rng: random.Random) -> list[dict]:
                 entity_id=1400 + i,
                 attribute="is_diabetic",
                 value="true",
-                epistemic_kind="observation",
+                epistemic_kind="MEASURED",
                 confidence=0.95,
                 sources=[],
                 valid_time=_range(_base_ts(0), _base_ts(365)),
@@ -197,7 +197,7 @@ def _bucket_conflict(rng: random.Random) -> list[dict]:
                 entity_id=eid,
                 attribute=REJECT_POLICY_ATTRS[0],  # bp_systolic
                 value=str(180 + i),  # different from seed's 110+i
-                epistemic_kind="observation",
+                epistemic_kind="MEASURED",
                 confidence=0.95,
                 sources=[],
                 valid_time=vt,
@@ -225,7 +225,7 @@ def _bucket_confidence(rng: random.Random) -> list[dict]:
                 entity_id=eid,
                 attribute=f"cognitive_score_{i}",
                 value=str(round(rng.uniform(0, 100), 2)),
-                epistemic_kind="observation",
+                epistemic_kind="MEASURED",
                 confidence=c,
                 sources=[],
                 valid_time=_range(_base_ts(0), _base_ts(30)),
@@ -253,7 +253,7 @@ def _bucket_bitemporal(rng: random.Random) -> list[dict]:
                 entity_id=eid,
                 attribute="temp_c",
                 value=f"{38.5 + i * 0.05:.2f}",
-                epistemic_kind="observation",
+                epistemic_kind="MEASURED",
                 confidence=0.95,
                 sources=[],
                 valid_time=vt,
@@ -281,7 +281,7 @@ def _bucket_progressive(rng: random.Random) -> list[dict]:
                 entity_id=5000 + i,
                 attribute=f"agg_90d_{i}",
                 value=str(round(rng.uniform(1, 100), 2)),
-                epistemic_kind="derived",
+                epistemic_kind="DERIVED",
                 confidence=round(rng.uniform(0.5, 0.9), 3),
                 # Sentinel; run.py substitutes a real fact_id at replay time.
                 sources=["__SEED_FACT__"],
@@ -297,7 +297,7 @@ def _bucket_progressive(rng: random.Random) -> list[dict]:
                 entity_id=5100 + i,
                 attribute=f"agg_masquerade_{i}",
                 value=str(round(rng.uniform(1, 100), 2)),
-                epistemic_kind="observation",
+                epistemic_kind="MEASURED",
                 confidence=0.99,
                 sources=["__SEED_FACT__"],  # obs + sources → R3 violation
                 valid_time=_range(_base_ts(0), _base_ts(90)),

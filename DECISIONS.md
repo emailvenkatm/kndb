@@ -4,6 +4,71 @@ Running log of concrete decisions made during KNDB construction. Newest at the t
 
 ---
 
+## 2026-07-02 — v2 Change 2 (Phase 2B): use-permission scope views (Primitive 6)
+
+- Added `engine/08_use_permissions.sql` with three views on `kndb.fact`:
+  - `kndb.fact_compliance`    (MEASURED + DERIVED only; INFERRED excluded)
+  - `kndb.fact_analytics`     (all kinds)
+  - `kndb.fact_training_safe` (MEASURED only; prevents model-on-model training collapse)
+  All three restricted to live rows via `upper(sys_time) = 'infinity'`.
+- New tests `tests/use_permissions.sql`: T6.1, T6.2, T6.3.
+- Distinction lives in the object being queried, not in a WHERE clause the caller must remember.
+- Makefile untouched (glob loop already picks up engine/0*.sql and tests/*.sql).
+- Enforcement remains in engine SQL only.
+
+## 2026-07-02 — v2 Change 1 (Phase 2A): precedence lattice conflict resolution
+
+- Added column `kndb.fact.specificity smallint NOT NULL DEFAULT 100 CHECK (specificity BETWEEN 0 AND 255)`.
+- Rewrote `kndb.resolve_conflict()` with an ordered precedence lattice enforced at write time:
+  1. Kind rank (helper `kndb.kind_rank`): MEASURED (3) > DERIVED (2) > INFERRED (1).
+  2. Specificity: higher wins.
+  3. Confidence: higher wins.
+  4. All three tied and values differ: NEW lands by arrival, prior audited with reason `contradicted_same_rank`.
+- Reason codes in `kndb_audit.evicted_fact.reason`: `kind_outranked`, `specificity`, `confidence`, `contradicted_same_rank`.
+- Same-value absorb unchanged. `conflict_policy = 'reject'` short-circuit unchanged.
+- Six new tests in `tests/engine_enforces_conflict.sql`:
+  - T3.4 high-conf INFERRED cannot displace lower-conf MEASURED (rejected at write time).
+  - T3.5 arrival order irrelevant: MEASURED arriving second still evicts prior INFERRED.
+  - T3.6 audit reason for T3.5 eviction = `kind_outranked`.
+  - T3.7 kind tied on DERIVED, higher specificity wins, reason = `specificity`.
+  - T3.8 kind + specificity tied, higher confidence wins, reason = `confidence`.
+  - T3.9 true tie: NEW lands by arrival, prior audited, reason = `contradicted_same_rank`.
+- Backward change: T3.2 reason code went from `contradicted_by` to `contradicted_same_rank` because two identical MEASURED / 0.95 / spec=100 rows are now a true tie under the lattice. Row-level behavior (alive=1, closed=1, audit>=1) is identical; only the reason code changed.
+- 26 PASS across the full test suite; 0 FAIL; 0 ERROR.
+
+## 2026-07-02 — v2 Change 3: rename epistemic kinds to UPPERCASE MEASURED / INFERRED / DERIVED
+
+- Previous: observation / inference / derived (lowercase, matches original Wong/Datalog convention).
+- New:      MEASURED / INFERRED / DERIVED (uppercase, matches paper-audience expectation of a distinguished taxonomy).
+- Migration: DROP schema kndb CASCADE + rebuild via make engine. Prototype, not production.
+- Files renamed:
+  - engine/01_types.sql (ENUM definition itself)
+  - engine/03_triggers_epistemic.sql (R1/R3/R4 branch literals + comments + error text)
+  - engine/07_progressive_depth.sql (depth 0/1/2 mapping + comment)
+  - tests/engine_enforces_epistemic_type.sql
+  - tests/engine_enforces_conflict.sql
+  - tests/confidence_propagation.sql
+  - tests/bitemporal_asof.sql
+  - tests/progressive_depth.sql
+  - baselines/pg_handrolled_triggers/schema.sql (CHECK IN-list + trigger branch literals + error text + depth mapping)
+  - baselines/pg_naive/schema.sql (documentation comment only)
+  - baselines/py_guards/guards.py (VALID_KINDS set + kind-branch string comparisons + rejection messages)
+  - bench/adversarial/writes.py (SLOTS map + all payload epistemic_kind fields)
+  - bench/run.py (seed-anchor writes + throughput micro-bench payload)
+  - bench/confidence_correctness.py (chain-write payload)
+  - demo/demo.sh (Scene 1 SQL + Scene 2 SQL + narration line for R5 error)
+  - demo/clinical/01_setup.sql (slot registrations + three enum casts)
+  - demo/clinical/02_attack_and_screen.sql (WHERE-clause enum equalities + attack payload + progressive-depth IN-list)
+  - README.md (thesis backtick enum string)
+  - DESIGN.md (overview backtick enum string + Primitive 1 backtick literals)
+  - STATUS.md (attack-scenario quoted epistemic_kind literal)
+  - docs/team_explainer.html (all <code>-tagged enum-value strings)
+  - docs/research_incidents.html (two <code>-tagged epistemic_kind = INFERRED strings)
+- engine/02_facts_schema.sql, engine/04_triggers_conflict.sql, engine/05_bitemporal.sql: no enum literals present, no touch.
+- All 15 sub-tests still green after rename (make test EXIT=0).
+
+---
+
 ## 2026-07-01 — G3 CI verified green on a real GitHub-hosted runner
 
 - Private repo created: `emailvenkatm/kndb`.

@@ -7,8 +7,8 @@ TRUNCATE kndb.fact, kndb_audit.evicted_fact, kndb.slot_kind, kndb.conflict_polic
 
 -- Timeline: patient 20 was believed non-diabetic 2020-2022, then diabetic 2022+.
 INSERT INTO kndb.fact (entity_id, attribute, value, epistemic_kind, confidence, valid_time) VALUES
-  (20, 'is_diabetic', 'false', 'inference', 0.85, tstzrange('2020-01-01', '2022-01-01', '[)')),
-  (20, 'is_diabetic', 'true',  'inference', 0.90, tstzrange('2022-01-01', 'infinity', '[)'));
+  (20, 'is_diabetic', 'false', 'INFERRED', 0.85, tstzrange('2020-01-01', '2022-01-01', '[)')),
+  (20, 'is_diabetic', 'true',  'INFERRED', 0.90, tstzrange('2022-01-01', 'infinity', '[)'));
 
 \echo '-- T4.1 as_of_valid returns the row whose valid_time contains the query point'
 DO $$

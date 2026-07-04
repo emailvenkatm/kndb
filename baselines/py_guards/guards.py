@@ -31,7 +31,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 
-VALID_KINDS = {"observation", "inference", "derived"}
+VALID_KINDS = {"MEASURED", "INFERRED", "DERIVED"}
 
 
 class GuardRejection(Exception):
@@ -70,17 +70,17 @@ def write_fact(
     if not (0.0 <= float(confidence) <= 1.0):
         raise GuardRejection(f"confidence {confidence!r} out of [0,1]")
 
-    # G3 — inference must not claim certainty.
-    if epistemic_kind == "inference" and float(confidence) >= 1.0:
-        raise GuardRejection("inference cannot have confidence >= 1.0 (mirrors KNDB R4)")
+    # G3 — INFERRED must not claim certainty.
+    if epistemic_kind == "INFERRED" and float(confidence) >= 1.0:
+        raise GuardRejection("INFERRED cannot have confidence >= 1.0 (mirrors KNDB R4)")
 
-    # G4 — derived must have >=1 source.
-    if epistemic_kind == "derived" and len(sources) == 0:
-        raise GuardRejection("derived fact must reference >=1 source (mirrors KNDB R1)")
+    # G4 — DERIVED must have >=1 source.
+    if epistemic_kind == "DERIVED" and len(sources) == 0:
+        raise GuardRejection("DERIVED fact must reference >=1 source (mirrors KNDB R1)")
 
-    # G5 — observation must not carry sources.
-    if epistemic_kind == "observation" and len(sources) > 0:
-        raise GuardRejection("observation cannot carry sources (mirrors KNDB R3)")
+    # G5 — MEASURED must not carry sources.
+    if epistemic_kind == "MEASURED" and len(sources) > 0:
+        raise GuardRejection("MEASURED cannot carry sources (mirrors KNDB R3)")
 
     # G6 — slot-kind registry check.
     slots = _load_slot_kinds(conn)

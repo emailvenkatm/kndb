@@ -6,7 +6,7 @@ A Postgres + ProvSQL prototype exploring one claim: **trust primitives — epist
 
 ## Thesis (narrow, defensible)
 
-> No relational or graph database engine ships a first-class **epistemic-kind system** — `observation | inference | derived` as a distinguished, engine-checked property of every fact — with **propagation semantics baked into query evaluation** (i.e. a low-confidence inference cannot silently emerge from a join looking like a ground observation).
+> No relational or graph database engine ships a first-class **epistemic-kind system** — `MEASURED | INFERRED | DERIVED` as a distinguished, engine-checked property of every fact — with **propagation semantics baked into query evaluation** (i.e. a low-confidence inference cannot silently emerge from a join looking like a ground measurement).
 >
 > KNDB is a minimal prototype that does — on Postgres + ProvSQL, enforced by the engine, tested against Synthea-derived clinical-trial-eligibility data, with honest overhead numbers.
 

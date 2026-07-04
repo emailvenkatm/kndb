@@ -50,12 +50,12 @@ jobs:
           for f in engine/00_extensions.sql engine/01_types.sql engine/02_facts_schema.sql \
                    engine/03_triggers_epistemic.sql engine/04_triggers_conflict.sql \
                    engine/05_bitemporal.sql engine/06_provsql_setup.sql \
-                   engine/07_progressive_depth.sql; do
+                   engine/07_progressive_depth.sql engine/08_use_permissions.sql; do
             echo "== apply $f =="
             psql "$KDBCONN" -v ON_ERROR_STOP=1 -f "$f"
           done
 
-      - name: M0 smoke A + B
+      - name: verify-extensions (M0 smoke A + B)
         run: |
           KDBCONN="host=127.0.0.1 port=5433 user=kndb dbname=kndb"
           psql "$KDBCONN" -v ON_ERROR_STOP=1 -f tests/smoke_a_viterbi_leftjoin.sql
@@ -68,7 +68,8 @@ jobs:
                    tests/engine_enforces_conflict.sql \
                    tests/confidence_propagation.sql \
                    tests/bitemporal_asof.sql \
-                   tests/progressive_depth.sql; do
+                   tests/progressive_depth.sql \
+                   tests/use_permissions.sql; do
             echo "== test $f =="
             psql "$KDBCONN" -v ON_ERROR_STOP=1 -f "$f"
           done
@@ -81,8 +82,21 @@ jobs:
                    tests/engine_enforces_conflict.sql \
                    tests/confidence_propagation.sql \
                    tests/bitemporal_asof.sql \
-                   tests/progressive_depth.sql; do
+                   tests/progressive_depth.sql \
+                   tests/use_permissions.sql; do
             if psql "$KDBCONN" -f "$f" 2>&1 | grep -E "^psql:.*ERROR|^FAIL "; then
               echo "TEST FAIL in $f" && exit 1
             fi
           done
+
+      - name: smoke (end-to-end self-validation, final gate)
+        run: |
+          # smoke.sh uses `docker compose exec kndb-postgres psql ...` locally.
+          # In CI the DB is a service container reachable over TCP, so we tell
+          # smoke.sh to run psql directly via the KNDB_PSQL_DIRECT switch.
+          KNDB_PSQL_DIRECT=1 \
+          KNDB_PSQL_HOST=127.0.0.1 \
+          KNDB_PSQL_PORT=5433 \
+          KNDB_PSQL_USER=kndb \
+          KNDB_PSQL_DB=kndb \
+            bash smoke.sh

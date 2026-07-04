@@ -7,10 +7,10 @@ TRUNCATE kndb.fact, kndb_audit.evicted_fact, kndb.slot_kind, kndb.conflict_polic
 
 -- Insert one obs (0.95), one inference (0.7 for patient 1, 0.4 for patient 2).
 INSERT INTO kndb.fact (entity_id, attribute, value, epistemic_kind, confidence, valid_time) VALUES
-  (1, 'hba1c',       '7.2',  'observation', 0.95, tstzrange('2026-01-01', 'infinity', '[)')),
-  (2, 'hba1c',       '5.4',  'observation', 0.95, tstzrange('2026-01-01', 'infinity', '[)')),
-  (1, 'is_diabetic', 'true', 'inference',   0.70, tstzrange('2026-01-01', 'infinity', '[)')),
-  (2, 'is_diabetic', 'false','inference',   0.40, tstzrange('2026-01-01', 'infinity', '[)'));
+  (1, 'hba1c',       '7.2',  'MEASURED', 0.95, tstzrange('2026-01-01', 'infinity', '[)')),
+  (2, 'hba1c',       '5.4',  'MEASURED', 0.95, tstzrange('2026-01-01', 'infinity', '[)')),
+  (1, 'is_diabetic', 'true', 'INFERRED',   0.70, tstzrange('2026-01-01', 'infinity', '[)')),
+  (2, 'is_diabetic', 'false','INFERRED',   0.40, tstzrange('2026-01-01', 'infinity', '[)'));
 
 -- Closed-form: joined confidence via Viterbi is per-row product.
 -- p1: 0.95 * 0.70 = 0.665

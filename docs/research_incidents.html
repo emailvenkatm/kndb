@@ -292,7 +292,7 @@
         Wong et al. externally validated the vendor-shipped Epic Sepsis Model at Michigan Medicine. It missed ~two-thirds of sepsis cases and drove massive alert fatigue. The ESM score is written to the EHR every fifteen minutes. Downstream analytics consumed those scores as if they were observed risk signals, and the model was inherited by hundreds of hospitals before independent validation existed.
       </p>
       <div class="why">
-        <strong>Why KNDB:</strong> numeric model output stored alongside vitals with no visible <code>epistemic_kind = inference</code> marker. Every downstream cohort study that used ESM as a feature quietly conflated model outputs with observations.
+        <strong>Why KNDB:</strong> numeric model output stored alongside vitals with no visible <code>epistemic_kind = INFERRED</code> marker. Every downstream cohort study that used ESM as a feature quietly conflated model outputs with observations.
       </div>
       <div class="source">Source: <a href="https://jamanetwork.com/journals/jamainternalmedicine/fullarticle/2781307">jamanetwork.com &mdash; Wong et al., JAMA Intern Med 2021</a></div>
     </div>
@@ -352,7 +352,7 @@
         Zillow shut down its iBuying arm in November 2021 after inventory write-downs and a 25% workforce cut. Root cause: the algorithmic Zestimate was treated as sufficient signal to bid at market. Downstream systems never distinguished "model prediction" from "verified comparable." Stanford GSB frames it as a lemons problem: algorithmic estimates used where deeper appraisal was required.
       </p>
       <div class="why">
-        <strong>Why KNDB:</strong> model score consumed downstream as market price. A single <code>epistemic_kind = inference</code> tag on the Zestimate row would have forced the bidding system to run a policy check before trusting it as a price.
+        <strong>Why KNDB:</strong> model score consumed downstream as market price. A single <code>epistemic_kind = INFERRED</code> tag on the Zestimate row would have forced the bidding system to run a policy check before trusting it as a price.
       </div>
       <div class="source">Source: <a href="https://www.gsb.stanford.edu/insights/flip-flop-why-zillows-algorithmic-home-buying-venture-imploded">gsb.stanford.edu &mdash; flip-flop Zillow post-mortem</a></div>
     </div>

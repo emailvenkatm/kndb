@@ -31,7 +31,7 @@ DROP TABLE IF EXISTS baseline_handrolled_audit.evicted_fact CASCADE;
 
 CREATE TABLE baseline_handrolled.slot_kind (
   attribute      text PRIMARY KEY,
-  required_kind  text NOT NULL CHECK (required_kind IN ('observation','inference','derived'))
+  required_kind  text NOT NULL CHECK (required_kind IN ('MEASURED','INFERRED','DERIVED'))
 );
 
 CREATE TABLE baseline_handrolled.conflict_policy (
@@ -45,7 +45,7 @@ CREATE TABLE baseline_handrolled.fact (
   attribute       text          NOT NULL,
   value           text          NOT NULL,
   epistemic_kind  text          NOT NULL
-                                CHECK (epistemic_kind IN ('observation','inference','derived')),
+                                CHECK (epistemic_kind IN ('MEASURED','INFERRED','DERIVED')),
   confidence      numeric(6,5)  NOT NULL CHECK (confidence >= 0.0 AND confidence <= 1.0),
   sources         uuid[]        NOT NULL DEFAULT '{}',
   valid_time      tstzrange     NOT NULL,
@@ -72,8 +72,8 @@ DECLARE
   required text;
   missing_src int;
 BEGIN
-  IF NEW.epistemic_kind = 'derived' AND array_length(NEW.sources, 1) IS NULL THEN
-    RAISE EXCEPTION 'B2 R1: derived fact for attribute % has no sources', NEW.attribute
+  IF NEW.epistemic_kind = 'DERIVED' AND array_length(NEW.sources, 1) IS NULL THEN
+    RAISE EXCEPTION 'B2 R1: DERIVED fact for attribute % has no sources', NEW.attribute
       USING ERRCODE = '23514';
   END IF;
 
@@ -88,13 +88,13 @@ BEGIN
     END IF;
   END IF;
 
-  IF NEW.epistemic_kind = 'observation' AND array_length(NEW.sources, 1) IS NOT NULL THEN
-    RAISE EXCEPTION 'B2 R3: observation cannot have sources'
+  IF NEW.epistemic_kind = 'MEASURED' AND array_length(NEW.sources, 1) IS NOT NULL THEN
+    RAISE EXCEPTION 'B2 R3: MEASURED fact cannot have sources'
       USING ERRCODE = '23514';
   END IF;
 
-  IF NEW.epistemic_kind = 'inference' AND NEW.confidence >= 1.0 THEN
-    RAISE EXCEPTION 'B2 R4: inference cannot claim certainty'
+  IF NEW.epistemic_kind = 'INFERRED' AND NEW.confidence >= 1.0 THEN
+    RAISE EXCEPTION 'B2 R4: INFERRED fact cannot claim certainty'
       USING ERRCODE = '23514';
   END IF;
 
@@ -201,9 +201,9 @@ LANGUAGE sql STABLE AS $fn$
     AND upper(sys_time) = 'infinity'
     AND confidence >= p_min_conf
     AND (
-      (p_depth >= 0 AND epistemic_kind = 'observation')
-      OR (p_depth >= 1 AND epistemic_kind = 'inference')
-      OR (p_depth >= 2 AND epistemic_kind = 'derived')
+      (p_depth >= 0 AND epistemic_kind = 'MEASURED')
+      OR (p_depth >= 1 AND epistemic_kind = 'INFERRED')
+      OR (p_depth >= 2 AND epistemic_kind = 'DERIVED')
     );
 $fn$;
 

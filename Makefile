@@ -3,23 +3,24 @@ DC     := docker compose
 PSQL   := $(DC) exec -T kndb-postgres psql -U kndb -d kndb -v ON_ERROR_STOP=1
 PSQL_PG:= $(DC) exec -T kndb-postgres psql -U postgres -v ON_ERROR_STOP=1
 
-.PHONY: help up down psql wait test smoke smoke-a smoke-b engine reset demo bench reproduce clean bootstrap
+.PHONY: help up down psql wait test smoke verify-extensions smoke-a smoke-b engine reset demo bench reproduce clean bootstrap
 
 help:
 	@echo "KNDB targets:"
-	@echo "  make up          start isolated Postgres + ProvSQL container"
-	@echo "  make down        stop containers"
-	@echo "  make psql        interactive psql shell"
-	@echo "  make wait        block until Postgres is ready"
-	@echo "  make bootstrap   create kndb role + db (idempotent)"
-	@echo "  make smoke       run M0 empirical smoke tests (A + B)"
-	@echo "  make engine      apply engine/*.sql to the DB"
-	@echo "  make test        run test suite"
-	@echo "  make reset       drop + recreate the kndb database"
-	@echo "  make demo        run 60-second demo (M5)"
-	@echo "  make bench       run benchmark harness (M6)"
-	@echo "  make reproduce   full pipeline for paper figures"
-	@echo "  make clean       remove containers + volumes (DESTRUCTIVE)"
+	@echo "  make up               start isolated Postgres + ProvSQL container"
+	@echo "  make down             stop containers"
+	@echo "  make psql             interactive psql shell"
+	@echo "  make wait             block until Postgres is ready"
+	@echo "  make bootstrap        create kndb role + db (idempotent)"
+	@echo "  make engine           apply engine/*.sql to the DB"
+	@echo "  make test             run test suite"
+	@echo "  make smoke            end-to-end self-validation (9 steps, PASS/FAIL, <30s)"
+	@echo "  make verify-extensions run M0 empirical checks (ProvSQL semantics)"
+	@echo "  make reset            drop + recreate the kndb database"
+	@echo "  make demo             run 60-second demo"
+	@echo "  make bench            run benchmark harness"
+	@echo "  make reproduce        full pipeline for paper figures"
+	@echo "  make clean            remove containers + volumes (DESTRUCTIVE)"
 
 up:
 	$(DC) up -d
@@ -45,7 +46,10 @@ wait:
 psql:
 	$(DC) exec kndb-postgres psql -U kndb -d kndb
 
-smoke: smoke-a smoke-b
+smoke:
+	@./smoke.sh
+
+verify-extensions: smoke-a smoke-b
 
 smoke-a:
 	@echo "== M0 smoke A: ProvSQL Viterbi + LEFT JOIN monus semantics =="
@@ -76,7 +80,7 @@ demo:
 bench:
 	python3 bench/run.py --seeds 10 --config bench/config.yaml --out bench/results/
 
-reproduce: clean up smoke engine test demo bench
+reproduce: clean up engine verify-extensions test smoke demo bench
 	@echo "== reproduction pipeline complete =="
 
 clean:

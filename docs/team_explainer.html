@@ -390,7 +390,7 @@
     <div class="tldr">
       <div class="tag">TL;DR</div>
       <ul>
-        <li>Every row carries a kind: <code>observation</code>, <code>inference</code>, or <code>derived</code>. The engine refuses to lose the distinction.</li>
+        <li>Every row carries a kind: <code>MEASURED</code>, <code>INFERRED</code>, or <code>DERIVED</code>. The engine refuses to lose the distinction.</li>
         <li>The engine also computes joined confidence across queries, preserves conflicts in an audit table, and answers "what did we believe on Tuesday" as a stock query.</li>
         <li>Prototype green on Postgres 17 + ProvSQL. All tests pass on 11,637 real synthetic-patient rows. CIDR 2027 submission by 2026-08-04.</li>
       </ul>
@@ -427,7 +427,7 @@
       Look at any operational database column and ask: is this number measured, calculated from a formula, or predicted by a model? In a plain SQL store, the schema does not say. Every downstream query treats the three as equal. Every team then reinvents "how confident is this?" in application code, differently each time. When the answer matters, the difference is invisible.
     </p>
     <p>
-      KNDB is a Postgres extension. Every row carries an <strong>epistemic kind</strong> (<code>observation</code>, <code>inference</code>, or <code>derived</code>), a <strong>confidence in [0, 1]</strong>, a set of <strong>source facts</strong> it depends on, and two <strong>time ranges</strong> (when the fact was true in the world, and when the database believed it). Around that shape, five write-time and query-time rules turn the schema into a trust contract enforced by the engine itself, not by a linter or a code review.
+      KNDB is a Postgres extension. Every row carries an <strong>epistemic kind</strong> (<code>MEASURED</code>, <code>INFERRED</code>, or <code>DERIVED</code>), a <strong>confidence in [0, 1]</strong>, a set of <strong>source facts</strong> it depends on, and two <strong>time ranges</strong> (when the fact was true in the world, and when the database believed it). Around that shape, five write-time and query-time rules turn the schema into a trust contract enforced by the engine itself, not by a linter or a code review.
     </p>
     <div class="callout">
       <div class="tag">The narrow claim</div>
@@ -486,7 +486,7 @@
       <div class="rowgrid">
         <div class="k">Fails as</div><div>External validation at Michigan Medicine flagged poor calibration. STAT reported ESM alerts firing after antibiotics were already ordered, making a "leading" indicator a lagging one.</div>
       </div>
-      <div class="fail"><strong>Traditional DB fails:</strong> no <code>epistemic_kind=inference</code> tag, no model-version pointer, no input-feature manifest on the row.</div>
+      <div class="fail"><strong>Traditional DB fails:</strong> no <code>epistemic_kind=INFERRED</code> tag, no model-version pointer, no input-feature manifest on the row.</div>
       <div class="src">Source: <a href="https://www.statnews.com/2021/09/27/epic-sepsis-algorithm-antibiotics-model/">STAT News 2021</a> &middot; <a href="https://academic.oup.com/jamiaopen/article/7/4/ooae133/7900014">JAMIA Open 2024</a></div>
     </div>
 
@@ -594,7 +594,7 @@
     <div class="primitive">
       <div class="num">1</div>
       <h3>Epistemic typing</h3>
-      <p>Every fact is typed <code>observation</code>, <code>inference</code>, or <code>derived</code>. The engine refuses to lose the distinction, refuses to accept a wrong-kind write, and refuses to accept a derived row that does not name its sources.</p>
+      <p>Every fact is typed <code>MEASURED</code>, <code>INFERRED</code>, or <code>DERIVED</code>. The engine refuses to lose the distinction, refuses to accept a wrong-kind write, and refuses to accept a DERIVED row that does not name its sources.</p>
       <div class="analogy">
         <strong>Analogy &middot; the newsroom</strong>
         Every claim in the paper is tagged reporter-confirmed, off-the-record source, or editor's summary. The copy desk refuses to send an editor's summary out under a reporter-confirmed byline.
@@ -606,7 +606,7 @@
         </div>
         <div class="side kndb">
           <div class="tag">KNDB</div>
-          <p>eGFR is registered as <code>derived</code>, sodium as <code>observation</code>. Every write is checked at the trigger; a wrong-kind write is rejected before the row lands, no matter which client sent it.</p>
+          <p>eGFR is registered as <code>DERIVED</code>, sodium as <code>MEASURED</code>. Every write is checked at the trigger; a wrong-kind write is rejected before the row lands, no matter which client sent it.</p>
         </div>
       </div>
       <div class="example">
@@ -615,7 +615,7 @@
       </div>
       <div class="example">
         <div class="domain">Sales &amp; CRM</div>
-        <p>Vendor enrichment fills in <code>accounts.employees</code> for unknown companies with model guesses. In KNDB, verified counts stay <code>observation</code>, model guesses land as <code>inference</code> in a separate stream. Marketing cohorts can query either or both, on purpose.</p>
+        <p>Vendor enrichment fills in <code>accounts.employees</code> for unknown companies with model guesses. In KNDB, verified counts stay <code>MEASURED</code>, model guesses land as <code>INFERRED</code> in a separate stream. Marketing cohorts can query either or both, on purpose.</p>
       </div>
     </div>
 

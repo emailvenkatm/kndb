@@ -1,8 +1,8 @@
 -- KNDB engine — Primitive 5: progressive-depth expansion.
 --
--- depth=0 → observations only, confidence >= min_conf.
--- depth=1 → depth=0 plus inferences.
--- depth=2 → depth=1 plus derived aggregates.
+-- depth=0 → MEASURED only, confidence >= min_conf.
+-- depth=1 → depth=0 plus INFERRED.
+-- depth=2 → depth=1 plus DERIVED aggregates.
 --
 -- The paper's claim: as depth increases, recall goes up, average confidence
 -- goes down — monotonically. Callers pick the tradeoff explicitly per query.
@@ -19,9 +19,9 @@ LANGUAGE sql STABLE AS $fn$
     AND upper(sys_time) = 'infinity'
     AND confidence >= p_min_conf
     AND (
-      (p_depth >= 0 AND epistemic_kind = 'observation')
-      OR (p_depth >= 1 AND epistemic_kind = 'inference')
-      OR (p_depth >= 2 AND epistemic_kind = 'derived')
+      (p_depth >= 0 AND epistemic_kind = 'MEASURED')
+      OR (p_depth >= 1 AND epistemic_kind = 'INFERRED')
+      OR (p_depth >= 2 AND epistemic_kind = 'DERIVED')
     );
 $fn$;
 

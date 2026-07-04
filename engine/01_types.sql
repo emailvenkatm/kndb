@@ -4,9 +4,9 @@
 -- The three epistemic kinds. Adding a fourth requires a paper edit and a
 -- migration; this is intentionally short.
 CREATE TYPE kndb.epistemic_kind AS ENUM (
-  'observation',   -- directly measured (lab result, sensor reading, user-declared)
-  'inference',     -- output of a model or rule
-  'derived'        -- deterministic aggregate of other facts (sources REQUIRED)
+  'MEASURED',   -- directly measured (lab result, sensor reading, user-declared)
+  'INFERRED',   -- output of a model or rule
+  'DERIVED'     -- deterministic aggregate of other facts (sources REQUIRED)
 );
 
 -- Confidence lives in [0, 1]. Domain enforces the range at write time.

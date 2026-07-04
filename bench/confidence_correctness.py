@@ -84,7 +84,7 @@ def _load_chain(conn: psycopg.Connection, system: str, chain_id: int, chain: lis
             entity_id=90_000 + chain_id,
             attribute=f"link_{chain_id}_{k}",
             value=f"{c:.3f}",
-            epistemic_kind="observation",
+            epistemic_kind="MEASURED",
             confidence=c,
             sources=[],
             valid_time="[2026-01-01, 2027-01-01)",

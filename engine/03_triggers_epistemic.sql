@@ -2,13 +2,13 @@
 --
 -- Rules enforced on INSERT/UPDATE:
 --
---   R1  derived rows MUST reference ≥1 source fact_id via `sources`.
+--   R1  DERIVED rows MUST reference ≥1 source fact_id via `sources`.
 --   R2  every source in `sources` MUST resolve to an existing fact row.
---   R3  `observation` rows MUST have sources = '{}' (an observation with
---       claimed upstream sources is not an observation, it's derived — reject).
---   R4  `inference` rows MUST have confidence < 1.0 (an inference with
+--   R3  `MEASURED` rows MUST have sources = '{}' (a measured fact with
+--       claimed upstream sources is not measured, it's DERIVED — reject).
+--   R4  `INFERRED` rows MUST have confidence < 1.0 (an inference with
 --       confidence 1 is claiming certainty it cannot support — reject).
---   R5  attribute values written into an obs-typed slot with a non-observation
+--   R5  attribute values written into a MEASURED-typed slot with a non-MEASURED
 --       epistemic_kind are rejected. Slot registry is `kndb.slot_kind`.
 --
 -- The slot registry (R5) is the mechanism that catches "model wrote its
@@ -36,9 +36,9 @@ DECLARE
   required kndb.epistemic_kind;
   missing_src int;
 BEGIN
-  IF NEW.epistemic_kind = 'derived' AND array_length(NEW.sources, 1) IS NULL THEN
-    RAISE EXCEPTION 'KNDB R1: derived fact for attribute % has no sources', NEW.attribute
-      USING ERRCODE = '23514', HINT = 'A derived fact must reference ≥1 fact_id in sources[].';
+  IF NEW.epistemic_kind = 'DERIVED' AND array_length(NEW.sources, 1) IS NULL THEN
+    RAISE EXCEPTION 'KNDB R1: DERIVED fact for attribute % has no sources', NEW.attribute
+      USING ERRCODE = '23514', HINT = 'A DERIVED fact must reference ≥1 fact_id in sources[].';
   END IF;
 
   IF array_length(NEW.sources, 1) IS NOT NULL THEN
@@ -52,14 +52,14 @@ BEGIN
     END IF;
   END IF;
 
-  IF NEW.epistemic_kind = 'observation' AND array_length(NEW.sources, 1) IS NOT NULL THEN
-    RAISE EXCEPTION 'KNDB R3: observation for attribute % cannot have upstream sources', NEW.attribute
+  IF NEW.epistemic_kind = 'MEASURED' AND array_length(NEW.sources, 1) IS NOT NULL THEN
+    RAISE EXCEPTION 'KNDB R3: MEASURED fact for attribute % cannot have upstream sources', NEW.attribute
       USING ERRCODE = '23514';
   END IF;
 
-  IF NEW.epistemic_kind = 'inference' AND NEW.confidence >= 1.0 THEN
-    RAISE EXCEPTION 'KNDB R4: inference for attribute % claims confidence >= 1.0', NEW.attribute
-      USING ERRCODE = '23514', HINT = 'Model outputs cannot be certain. Reduce confidence or reclassify as observation.';
+  IF NEW.epistemic_kind = 'INFERRED' AND NEW.confidence >= 1.0 THEN
+    RAISE EXCEPTION 'KNDB R4: INFERRED fact for attribute % claims confidence >= 1.0', NEW.attribute
+      USING ERRCODE = '23514', HINT = 'Model outputs cannot be certain. Reduce confidence or reclassify as MEASURED.';
   END IF;
 
   SELECT required_kind INTO required FROM kndb.slot_kind WHERE attribute = NEW.attribute;

@@ -21,7 +21,7 @@ Ran end-to-end on `docker compose exec kndb-postgres`. Reproducible via `bash de
   - derived: **16,239** (90-day per-patient averages, sources reference obs `fact_id`s)
 - **Trial T2DM-06 screening (obs HbA1c ≥ 6.5):** 492 distinct eligible patients; 2,495 candidate join rows against model-inferred `is_diabetic=true`.
 - **Top Viterbi joined confidence:** 0.9025 (= 0.95 × 0.95). Engine-computed via `sr_viterbi(provenance(), 'kndb.fact_weights')`.
-- **Attack scenario:** picked `entity_id=-2147475695` (patient with no HbA1c observation), attempted to slot a 7.2 model-imputed value as `epistemic_kind='inference'` into the `hba1c` slot registered as observation-required. **KNDB rejected at write time with `R5` — payload NOT stored**. Plain Postgres would have accepted the same write silently (baseline in the old `demo/demo.sh`).
+- **Attack scenario:** picked `entity_id=-2147475695` (patient with no HbA1c observation), attempted to slot a 7.2 model-imputed value as `epistemic_kind='INFERRED'` into the `hba1c` slot registered as MEASURED-required. **KNDB rejected at write time with `R5` — payload NOT stored**. Plain Postgres would have accepted the same write silently (baseline in the old `demo/demo.sh`).
 - **Progressive depth on 550k-row DB:** obs 544,349 → +inf 549,348 → +der 565,587 (monotone recall).
 
 ## Native benchmark on Synthea-preloaded DB (2026-07-01, ARM64, G2.3)

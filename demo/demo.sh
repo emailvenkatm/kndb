@@ -27,11 +27,11 @@ CREATE TABLE demo_plain.labs (
 -- kndb.fact + engine already exists (from make engine). Reset just its data.
 TRUNCATE kndb.fact, kndb_audit.evicted_fact, kndb.slot_kind, kndb.conflict_policy CASCADE;
 
--- KNDB step the naive schema cannot express: register hba1c as observation-typed.
+-- KNDB step the naive schema cannot express: register hba1c as MEASURED-typed.
 INSERT INTO kndb.slot_kind (attribute, required_kind) VALUES
-  ('hba1c',        'observation'),
-  ('bp_systolic',  'observation'),
-  ('is_diabetic',  'inference');
+  ('hba1c',        'MEASURED'),
+  ('bp_systolic',  'MEASURED'),
+  ('is_diabetic',  'INFERRED');
 SQL
 say "created demo_plain.labs (unconstrained), left kndb.fact typed."
 
@@ -55,10 +55,10 @@ subsec "1b: KNDB rejects the same write at write time"
 set +e
 PSQL_NAMED <<'SQL' 2>&1 | head -8
 INSERT INTO kndb.fact (entity_id, attribute, value, epistemic_kind, confidence, valid_time)
-VALUES (42, 'hba1c', '7.8', 'inference', 0.7, tstzrange('2026-06-01', 'infinity', '[)'));
+VALUES (42, 'hba1c', '7.8', 'INFERRED', 0.7, tstzrange('2026-06-01', 'infinity', '[)'));
 SQL
 set -e
-say "→ ERROR 23514, rule R5: attribute hba1c is registered as observation, got inference."
+say "→ ERROR 23514, rule R5: attribute hba1c is registered as MEASURED, got INFERRED."
 say "  Write refused BEFORE the row lands. Engine, not app code."
 sleep 1
 
@@ -66,13 +66,13 @@ sleep 1
 section "SCENE 2 — the SAME model output, properly labeled, is accepted"
 # -------------------------------------------------------------------------
 PSQL_NAMED <<'SQL'
--- Ground observation first.
+-- Ground MEASURED fact first.
 INSERT INTO kndb.fact (entity_id, attribute, value, epistemic_kind, confidence, valid_time)
-VALUES (42, 'hba1c', '7.2', 'observation', 0.95, tstzrange('2026-06-01', 'infinity', '[)'));
+VALUES (42, 'hba1c', '7.2', 'MEASURED', 0.95, tstzrange('2026-06-01', 'infinity', '[)'));
 
--- Inference labeled honestly — accepted with its confidence.
+-- INFERRED fact labeled honestly — accepted with its confidence.
 INSERT INTO kndb.fact (entity_id, attribute, value, epistemic_kind, confidence, valid_time)
-VALUES (42, 'is_diabetic', 'true', 'inference', 0.70, tstzrange('2026-06-01', 'infinity', '[)'));
+VALUES (42, 'is_diabetic', 'true', 'INFERRED', 0.70, tstzrange('2026-06-01', 'infinity', '[)'));
 
 SELECT epistemic_kind, attribute, value, confidence FROM kndb.fact WHERE entity_id=42 ORDER BY epistemic_kind;
 SQL

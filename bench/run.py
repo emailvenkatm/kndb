@@ -204,7 +204,7 @@ def _install_seed_fact(conn: psycopg.Connection, name: str) -> str:
         entity_id=99999,
         attribute=f"seed_anchor_{name}",
         value="1.0",
-        epistemic_kind="observation",
+        epistemic_kind="MEASURED",
         confidence=0.99,
         sources=[],
         valid_time="[2026-01-01, 2027-01-01)",
@@ -229,7 +229,7 @@ def _install_seed_fact(conn: psycopg.Connection, name: str) -> str:
                 (entity_id, attribute, value, epistemic_kind, confidence, sources, valid_time)
                 VALUES (%s, %s, %s, %s, %s, %s, %s::tstzrange)
                 RETURNING fact_id""",
-            (99999, f"seed_anchor_{name}", "1.0", "observation", 0.99, [], "[2026-01-01, 2027-01-01)"),
+            (99999, f"seed_anchor_{name}", "1.0", "MEASURED", 0.99, [], "[2026-01-01, 2027-01-01)"),
         )
         return str(cur.fetchone()[0])
 
@@ -393,7 +393,7 @@ def throughput(system: str, rows: int = 10_000, seed_reps: int = 10) -> dict:
                             rng.randint(1, 10_000_000),  # unique-ish entity so no conflict
                             f"tp_{rep}_{i}",
                             f"{rng.uniform(0, 100):.2f}",
-                            "observation",
+                            "MEASURED",
                             round(rng.uniform(0.5, 0.99), 3),
                             [],
                             vt,

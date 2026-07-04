@@ -8,15 +8,15 @@ TRUNCATE kndb.fact, kndb_audit.evicted_fact, kndb.slot_kind, kndb.conflict_polic
 
 -- One patient with mixed obs / inference / derived.
 INSERT INTO kndb.fact (entity_id, attribute, value, epistemic_kind, confidence, valid_time) VALUES
-  (30, 'hba1c',       '7.2',   'observation', 0.95, tstzrange('2026-01-01', 'infinity', '[)')),
-  (30, 'ldl',         '112',   'observation', 0.95, tstzrange('2026-01-01', 'infinity', '[)')),
-  (30, 'bp_systolic', '138',   'observation', 0.95, tstzrange('2026-01-01', 'infinity', '[)')),
-  (30, 'is_diabetic', 'true',  'inference',   0.72, tstzrange('2026-01-01', 'infinity', '[)')),
-  (30, 'is_hypertensive','true','inference', 0.60, tstzrange('2026-01-01', 'infinity', '[)'));
+  (30, 'hba1c',       '7.2',   'MEASURED', 0.95, tstzrange('2026-01-01', 'infinity', '[)')),
+  (30, 'ldl',         '112',   'MEASURED', 0.95, tstzrange('2026-01-01', 'infinity', '[)')),
+  (30, 'bp_systolic', '138',   'MEASURED', 0.95, tstzrange('2026-01-01', 'infinity', '[)')),
+  (30, 'is_diabetic', 'true',  'INFERRED',   0.72, tstzrange('2026-01-01', 'infinity', '[)')),
+  (30, 'is_hypertensive','true','INFERRED', 0.60, tstzrange('2026-01-01', 'infinity', '[)'));
 
 -- derived requires sources; grab the obs UUIDs.
 INSERT INTO kndb.fact (entity_id, attribute, value, epistemic_kind, confidence, sources, valid_time)
-SELECT 30, 'avg_bp_systolic_90d', '138', 'derived', 0.80,
+SELECT 30, 'avg_bp_systolic_90d', '138', 'DERIVED', 0.80,
        ARRAY(SELECT fact_id FROM kndb.fact WHERE entity_id=30 AND attribute='bp_systolic'),
        tstzrange('2026-01-01', 'infinity', '[)');
 
