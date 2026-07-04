@@ -1,0 +1,2 @@
+system,total,caught_at_write_time,missed_silently,crashed
+pg_naive,100,0,70,0

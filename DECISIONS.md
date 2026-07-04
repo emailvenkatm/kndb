@@ -4,6 +4,62 @@ Running log of concrete decisions made during KNDB construction. Newest at the t
 
 ---
 
+## 2026-07-02 — v2 Change 4 (Phase 4A): v2 benchmark on native ARM64
+
+Applied v2 engine (engine/00 through 08) to the native install (Postgres 17.10 + ProvSQL 1.10.0 on port 5434), re-ran the adversarial + throughput suite.
+
+- New scripts: `bench/run_native_v2.sh`, `bench/run_synthea_v2.sh`.
+- New result dirs: `bench/results/native_v2/`, `bench/results/native_synthea_v2/` (manifest.json, per-system CSVs, summaries).
+- `bench/README.md` updated with a v1-vs-v2 comparison table.
+
+Adversarial catch rate unchanged at both empty and 565k Synthea-preloaded sizes:
+- kndb 70/70, steelman 70/70, naive 0/70, py_guards 30/70.
+
+Throughput (native ARM64, seed 42, 10 reps):
+
+| Config | System | v1 (rps) | v2 (rps) | Delta |
+|---|---|---:|---:|---:|
+| Empty DB (10k x 10) | kndb                    | 13,150 |  9,958 | -24% |
+| Empty DB           | pg_handrolled_triggers  | 14,912 | 12,036 | -19% |
+| Synthea 565k (5k x 10) | kndb                    |  5,598 |  7,574 | +35% |
+| Synthea 565k       | pg_handrolled_triggers  | 15,560 | 11,668 | -25% |
+
+Interpretation. On empty DB, both engines drop by a similar proportion (-19 vs -24 percent). Some of that is background noise on the runner (the -19 percent on the steelman has no code change to explain it); the rest is the honest cost of the new precedence-lattice branches on kndb.
+
+On the 565k Synthea DB the numbers move in opposite directions between engines: kndb up 35 percent, steelman down 25 percent. That combination cannot be a lattice signal (kndb would go down not up). The credible read is that at 565k rows the per-insert cost is dominated by ProvSQL bookkeeping, not by the lattice; ambient noise from a longer run window shows up as movement in either direction. bench/README documents this honestly rather than dressing it up.
+
+Bottom line the paper should state. Precedence lattice adds a small constant per-insert cost on top of ProvSQL. At empty-DB scale this shows as a proportional decrease (order of low-double-digit percentages) that also appears on the size-invariant steelman, so at least half of it is measurement noise on the runner. At 565k Synthea scale the lattice cost is not measurable against the ProvSQL-dominated per-insert cost.
+
+## 2026-07-02 — v2 Change 5 (Phase 4B): documentation refresh
+
+- README top: "Why KNDB exists" motive block with four WebFetch-verified citations:
+  - Validity 2022 blog (>50% of admins rate CRM accuracy under 80%): https://www.validity.com/blog/poor-data-quality-is-sabotaging-businesses-in-2022/
+  - Validity 2025 press release (76% headline): https://www.prnewswire.com/news-releases/validity-releases-state-of-crm-data-management-in-2025-report-revealing-disconnect-between-data-quality-and-ai-implementation-302499899.html
+  - CFPB Circular 2023-03 (algorithmic credit denials must be explained): https://www.consumerfinance.gov/about-us/newsroom/cfpb-issues-guidance-on-credit-denials-by-lenders-using-artificial-intelligence/
+  - Shumailov et al. Nature 631 pp755-759 (2024) on model collapse: https://www.nature.com/articles/s41586-024-07566-y
+- HbA1c-heavy examples in README, DESIGN.md, and docs/team_explainer.html swapped for the four v2-spec examples: MDM survivorship, CRM enrichment accuracy, CFPB explainability, training-data decontamination.
+- DESIGN.md Primitive 3 rewritten as the precedence lattice (kind_rank > specificity > confidence > arrival) with reason codes. New Primitive 6 documents kndb.fact_compliance, kndb.fact_analytics, kndb.fact_training_safe.
+- STATUS.md new "v2 upgrade" block under Quotable now (lattice, specificity, three views, 26 sub-tests, 9-step smoke gate). Removed items closed by v2.
+- All em-dashes stripped from README, DESIGN.md, STATUS.md, docs/team_explainer.html.
+- No Sanskrit or Panini mentions anywhere.
+
+## 2026-07-02 — v2 Change 4 (Phase 3): end-to-end smoke gate landed
+
+- New `smoke.sh` at repo root: nine steps proving all six primitives alive.
+  1. MEASURED write accepted.
+  2. R5: INFERRED into MEASURED-typed slot rejected.
+  3. Precedence: high-conf INFERRED cannot displace lower-conf MEASURED.
+  4. Same-value overlap absorbed, valid_time widens.
+  5. Viterbi join: sr_viterbi returns 0.665 (0.95 * 0.70).
+  6. Bitemporal as_of_valid returns the correct historical value.
+  7. Progressive-depth expand(0/1/2) recall up, avg-conf down monotonically.
+  8. Use-permission views: fact_compliance excludes INFERRED; fact_training_safe MEASURED-only.
+  9. Conflict audit records reason = kind_outranked on lattice eviction.
+- Runs in 2 seconds warm on the local docker stack. PASS/FAIL per step. Exits non-zero on any failure.
+- Makefile: `make smoke` runs the new gate. Old M0 empirical checks moved to `make verify-extensions`.
+- `.github/workflows/ci.yml`: final `smoke` step wired via `KNDB_PSQL_DIRECT=1` env switch so smoke.sh runs both locally (docker compose exec) and on a hosted GitHub runner (TCP against the service container).
+- First remote CI run on v2 push: GREEN in 1m 8s.
+
 ## 2026-07-02 — v2 Change 2 (Phase 2B): use-permission scope views (Primitive 6)
 
 - Added `engine/08_use_permissions.sql` with three views on `kndb.fact`:

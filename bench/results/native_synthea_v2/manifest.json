@@ -1,0 +1,16 @@
+{
+  "run_at":                "2026-07-04T20:44:00+00:00",
+  "arch":                  "arm64",
+  "kernel":                "Darwin Venkys-MacBook-Pro.local 25.4.0 Darwin Kernel Version 25.4.0: Thu Mar 19 19:33:50 PDT 2026; root:xnu-12377.101.15~1/RELEASE_ARM64_T6050 arm64",
+  "postgres":              "17.10 (Homebrew)",
+  "provsql":               "1.10.0",
+  "dsn":                   "postgresql://kndb_native:***@localhost:5434/kndb_native",
+  "tp_rows":               5000,
+  "tp_reps":               10,
+  "seed":                  42,
+  "emulation":             false,
+  "preserve_facts":        true,
+  "engine":                "v2",
+  "kndb_fact_rows_before": 615658(*)|d265daa9-f206-561d-845c-2a85fa0fa72c,
+  "note":                  "Native ARM64 + Synthea 565k-row preload for P4A v2. v2 engine (precedence lattice + use-permission views + specificity column) enabled."
+}
