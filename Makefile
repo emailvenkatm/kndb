@@ -3,7 +3,7 @@ DC     := docker compose
 PSQL   := $(DC) exec -T kndb-postgres psql -U kndb -d kndb -v ON_ERROR_STOP=1
 PSQL_PG:= $(DC) exec -T kndb-postgres psql -U postgres -v ON_ERROR_STOP=1
 
-.PHONY: help up down psql wait test smoke verify-extensions smoke-a smoke-b engine reset demo bench reproduce clean bootstrap
+.PHONY: help up down psql wait test smoke verify-extensions smoke-a smoke-b engine reset demo bench reproduce clean bootstrap concurrency
 
 help:
 	@echo "KNDB targets:"
@@ -79,6 +79,11 @@ demo:
 
 bench:
 	python3 bench/run.py --seeds 10 --config bench/config.yaml --out bench/results/
+
+concurrency:
+	@echo "== concurrency-safety experiment (pvldb-extension) =="
+	@$(MAKE) -C experiments/concurrency venv bootstrap correctness throughput
+	@echo "== full RESULTS.md at experiments/concurrency/RESULTS.md =="
 
 reproduce: clean up engine verify-extensions test smoke demo bench
 	@echo "== reproduction pipeline complete =="

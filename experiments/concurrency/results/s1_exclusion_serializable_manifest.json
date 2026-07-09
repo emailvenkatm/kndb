@@ -1,0 +1,33 @@
+{
+  "run_at": "2026-07-09T07:38:17.924309+00:00",
+  "scenario": "s1_exclusion",
+  "isolation": "SERIALIZABLE",
+  "seed": 42,
+  "iterations": 1000,
+  "summary": {
+    "scenario": "s1_exclusion",
+    "isolation": "SERIALIZABLE",
+    "iterations": 1000,
+    "violations": 0,
+    "both_committed": 361,
+    "one_committed": 639,
+    "both_failed": 0,
+    "wall_clock_s": 8.284955024719238,
+    "iterations_per_s": 120.70071557617032
+  },
+  "server_provenance": {
+    "server_version": "PostgreSQL 17.10 (Homebrew) on aarch64-apple-darwin25.4.0, compiled by Apple clang version 21.0.0 (clang-2100.0.123.102), 64-bit",
+    "provsql_version": "1.10.0",
+    "max_connections": 200,
+    "database": "kndb_concur",
+    "server_encoding": "UTF8"
+  },
+  "hardware_provenance": {
+    "python": "3.14.5",
+    "platform": "macOS-26.4.1-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "uname": "Darwin Mac 25.4.0 Darwin Kernel Version 25.4.0: Thu Mar 19 19:33:50 PDT 2026; root:xnu-12377.101.15~1/RELEASE_ARM64_T6050 arm64",
+    "sw_vers": "ProductName:\t\tmacOS\nProductVersion:\t\t26.4.1\nBuildVersion:\t\t25E253",
+    "chip_and_cores": "Chip: Apple M5 Pro\n Total Number of Cores: 18 (6 Super and 12 Performance)\n Memory: 48 GB"
+  }
+}
