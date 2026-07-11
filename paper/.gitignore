@@ -1,0 +1,9 @@
+# LaTeX build artifacts (regenerable from kndb-cidr2027.tex via tectonic)
+*.pdf
+*.aux
+*.log
+*.out
+*.bbl
+*.blg
+*.toc
+*.synctex.gz
