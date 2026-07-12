@@ -1,0 +1,6 @@
+comment = 'Native epistemic typing table AM (PoC)'
+default_version = '1.0'
+module_pathname = '$libdir/epistemic'
+relocatable = false
+schema = epistemic
+requires = ''
