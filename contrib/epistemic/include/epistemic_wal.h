@@ -104,6 +104,10 @@ extern XLogRecPtr epistemic_wal_log_insert(Relation rel,
 										   const char *tuple,
 										   uint16 tuple_len);
 
+extern XLogRecPtr epistemic_wal_log_insert_marker(Relation rel,
+												  ItemPointer tid,
+												  const EpistemicPrefix *prefix);
+
 extern XLogRecPtr epistemic_wal_log_evict(Relation rel,
 										  ItemPointer loser,
 										  ItemPointer winner,

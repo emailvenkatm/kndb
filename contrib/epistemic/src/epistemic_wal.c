@@ -252,6 +252,23 @@ epistemic_wal_log_insert(Relation rel, Buffer buffer, ItemPointer tid,
 }
 
 XLogRecPtr
+epistemic_wal_log_insert_marker(Relation rel, ItemPointer tid,
+								const EpistemicPrefix *prefix)
+{
+	xl_epistemic_insert xlrec;
+
+	xlrec.rlocator = rel->rd_locator;
+	xlrec.offnum = ItemPointerGetOffsetNumber(tid);
+	xlrec.tuple_len = 0;
+	xlrec.prefix = *prefix;
+
+	XLogBeginInsert();
+	XLogRegisterData(&xlrec, SizeOfEpistemicInsert);
+
+	return XLogInsert(RM_EPISTEMIC_ID, XLOG_EPISTEMIC_INSERT);
+}
+
+XLogRecPtr
 epistemic_wal_log_evict(Relation rel, ItemPointer loser, ItemPointer winner,
 						TimestampTz close_ts, uint8 reason)
 {

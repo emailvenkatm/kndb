@@ -108,15 +108,31 @@ epistemic_check_r1(TupleTableSlot *slot)
 }
 
 /*
- * R2 SIMPLIFIED: a full source-catalog resolver is not wired for the
- * PoC. We instead require that any non-MEASURED row has a non-NULL
- * sources attribute so callers can identify the gap.
+ * R2: every non-NULL element of `sources` must resolve against
+ * epistemic.source_registry. MEASURED short-circuits to true (R3
+ * owns the "no sources" side). NULL/empty sources fail for
+ * INFERRED/DERIVED. A single SPI query counts registered matches
+ * with `= ANY($1::text[])` and compares to the array's non-NULL
+ * element count; NULL elements are treated as unregistered.
  */
 bool
 epistemic_check_r2(Relation rel, TupleTableSlot *slot)
 {
 	bool		isnull;
 	EpistemicKind k;
+	Datum		sources_datum;
+	Form_pg_attribute att;
+	ArrayType  *arr;
+	Datum	   *elems;
+	bool	   *elem_nulls;
+	int			nelems;
+	int			non_null_count = 0;
+	int			i;
+	Oid			argtypes[1] = { TEXTARRAYOID };
+	Datum		values[1];
+	int			ret;
+	int64		matched = 0;
+	bool		ok;
 
 	(void) rel;
 
@@ -131,8 +147,69 @@ epistemic_check_r2(Relation rel, TupleTableSlot *slot)
 	if (isnull || k == EK_MEASURED)
 		return true;
 
-	(void) slot_getattr(slot, EP_ATTR_SOURCES, &isnull);
-	return !isnull;
+	sources_datum = slot_getattr(slot, EP_ATTR_SOURCES, &isnull);
+	if (isnull)
+		return false;
+
+	att = TupleDescAttr(slot->tts_tupleDescriptor, EP_ATTR_SOURCES - 1);
+	if (!(att->attndims > 0 || type_is_array(att->atttypid)))
+	{
+		elog(DEBUG1, "R2 skipped: sources attribute is not an array type");
+		return true;
+	}
+
+	arr = DatumGetArrayTypeP(sources_datum);
+	if (ARR_NDIM(arr) == 0 ||
+		ArrayGetNItems(ARR_NDIM(arr), ARR_DIMS(arr)) == 0)
+		return false;
+
+	deconstruct_array(arr, TEXTOID, -1, false, TYPALIGN_INT,
+					  &elems, &elem_nulls, &nelems);
+
+	for (i = 0; i < nelems; i++)
+	{
+		if (!elem_nulls[i])
+			non_null_count++;
+	}
+
+	/*
+	 * NULL elements are conservatively treated as unregistered: a NULL
+	 * source cannot resolve to any registry row, so it fails R2.
+	 */
+	if (non_null_count < nelems)
+		return false;
+
+	values[0] = sources_datum;
+
+	if ((ret = SPI_connect()) < 0)
+		elog(ERROR, "SPI_connect failed: %d", ret);
+
+	ret = SPI_execute_with_args(
+		"SELECT count(*) FROM epistemic.source_registry "
+		"WHERE source_id = ANY($1::text[])",
+		1, argtypes, values, NULL, true, 1);
+
+	if (ret != SPI_OK_SELECT)
+	{
+		SPI_finish();
+		elog(ERROR, "R2 SPI_execute failed: %d", ret);
+	}
+
+	if (SPI_processed == 1)
+	{
+		bool		cnt_isnull;
+		Datum		cnt_d;
+
+		cnt_d = SPI_getbinval(SPI_tuptable->vals[0],
+							  SPI_tuptable->tupdesc, 1, &cnt_isnull);
+		if (!cnt_isnull)
+			matched = DatumGetInt64(cnt_d);
+	}
+
+	SPI_finish();
+
+	ok = (matched >= (int64) non_null_count);
+	return ok;
 }
 
 bool

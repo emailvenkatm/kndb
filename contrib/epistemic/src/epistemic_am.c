@@ -27,13 +27,16 @@
 #include "access/relscan.h"
 #include "access/tableam.h"
 #include "access/xact.h"
+#include "catalog/namespace.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/pg_type.h"
+#include "executor/spi.h"
 #include "executor/tuptable.h"
 #include "nodes/nodes.h"
 #include "storage/bufmgr.h"
 #include "storage/itemptr.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 #include "utils/rangetypes.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
@@ -61,6 +64,11 @@ static bool epistemic_am_methods_initialized = false;
 static void epistemic_tuple_insert_impl(Relation rel, TupleTableSlot *slot,
 										CommandId cid, int options,
 										struct BulkInsertStateData *bistate);
+
+static void epistemic_audit_evicted(Relation rel, ItemPointer loser_tid,
+									ItemPointer winner_tid,
+									EpistemicPrecedenceReason reason);
+static void epistemic_close_sys_time(Relation rel, ItemPointer loser_tid);
 
 /*
  * TOAST tables for epistemic relations are plain heap. Otherwise the TOAST
@@ -168,7 +176,13 @@ extract_prefix(TupleTableSlot *slot, EpistemicPrefix *out)
 	return true;
 }
 
-/* True if the tuple's sys_time upper bound is +infinity (row still live). */
+/*
+ * True if the tuple's sys_time upper bound is unbounded ('live' row).
+ * Accepts either an unbounded range upper or a literal timestamptz
+ * 'infinity' value, since the user DDL defaults to
+ *   tstzrange(now(), 'infinity')
+ * which encodes the upper as the sentinel PG_INT64_MAX timestamptz.
+ */
 static bool
 sys_time_is_open(TupleTableSlot *slot)
 {
@@ -176,6 +190,10 @@ sys_time_is_open(TupleTableSlot *slot)
 	Datum		d;
 	RangeType  *r;
 	char		flags;
+	TypeCacheEntry *tc;
+	RangeBound	lb,
+				ub;
+	bool		empty;
 
 	d = slot_getattr(slot, EP_ATTR_SYS_TIME, &isnull);
 	if (isnull)
@@ -184,7 +202,15 @@ sys_time_is_open(TupleTableSlot *slot)
 	flags = range_get_flags(r);
 	if (flags & RANGE_EMPTY)
 		return false;
-	return (flags & RANGE_UB_INF) != 0;
+	if (flags & RANGE_UB_INF)
+		return true;
+
+	tc = lookup_type_cache(RangeTypeGetOid(r), TYPECACHE_RANGE_INFO);
+	range_deserialize(tc, r, &lb, &ub, &empty);
+	(void) lb;
+	if (empty || ub.infinite)
+		return true;
+	return TIMESTAMP_IS_NOEND(DatumGetTimestampTz(ub.val));
 }
 
 /*
@@ -278,6 +304,9 @@ epistemic_tuple_insert_impl(Relation rel, TupleTableSlot *slot,
 	EpistemicPrefix new_prefix;
 	bool		have_new_prefix;
 	const TableAmRoutine *heapam;
+	bool		have_eviction = false;
+	ItemPointerData loser_tid;
+	EpistemicCmpResult cmp = { EP_CMP_NEW_WINS, EP_REASON_NONE };
 
 	/* Step 1: R1..R5. */
 	rule = epistemic_check_rules(rel, slot);
@@ -300,14 +329,11 @@ epistemic_tuple_insert_impl(Relation rel, TupleTableSlot *slot,
 	/* Steps 4/5: overlap scan + precedence. */
 	if (have_key && have_new_prefix)
 	{
-		ItemPointerData loser_tid;
 		EpistemicPrefix incumbent;
 
 		if (find_live_overlap(rel, entity_id, attribute, valid_time,
 							  &loser_tid, &incumbent))
 		{
-			EpistemicCmpResult cmp;
-
 			cmp = epistemic_precedence_cmp(&incumbent, &new_prefix);
 
 			if (cmp.outcome == EP_CMP_NEW_LOSES)
@@ -316,33 +342,202 @@ epistemic_tuple_insert_impl(Relation rel, TupleTableSlot *slot,
 						 errmsg("epistemic precedence: NEW_LOSES (reason=%s)",
 								epistemic_precedence_reason_label(cmp.reason))));
 
-			/*
-			 * NEW_WINS. PoC simplification: emit the EVICT WAL record for
-			 * audit, but do not physically close the incumbent's sys_time
-			 * or append an audit row. Doing so requires a heap_update
-			 * against the loser TID with a modified tstzrange, plus SPI
-			 * into epistemic.evicted_fact; both are non-trivial and out of
-			 * scope for the PoC. Consequence: two live overlapping rows
-			 * co-exist until a subsequent write triggers eviction.
-			 */
-			(void) epistemic_wal_log_evict(rel, &loser_tid, &loser_tid,
-										   GetCurrentTimestamp(),
-										   (uint8) cmp.reason);
+			have_eviction = true;
 		}
 	}
 
-	/* Step 6: delegate storage to heap. */
+	/* Step 6: delegate storage to heap and obtain the winner's tid. */
 	heapam = GetHeapamTableAmRoutine();
 	heapam->tuple_insert(rel, slot, cid, options, bistate);
 
 	/*
-	 * Step 7: skipped. heap's tuple_insert has already written its own
-	 * XLOG_HEAP_INSERT record for durability. Emitting a matching
-	 * XLOG_EPISTEMIC_INSERT here would require re-registering the buffer
-	 * that heap_insert already released; Agent B's redo tolerates the
-	 * absence of a block ref, but the PoC forgoes epistemic-audit-in-WAL
-	 * on the insert path entirely.
+	 * Step 7: post-insert epistemic eviction bookkeeping.
+	 *   a) audit the incumbent to epistemic.evicted_fact, tagging the
+	 *      winner's ctid (now known).
+	 *   b) physically close the incumbent's sys_time upper bound.
+	 *   c) emit the EVICT WAL marker (heap's own update record provides
+	 *      durability for the sys_time close; this record carries the
+	 *      epistemic reason for audit / logical decoding).
+	 * valid_time is preserved throughout (bitemporal semantics).
 	 */
+	if (have_eviction)
+	{
+		epistemic_audit_evicted(rel, &loser_tid, &slot->tts_tid, cmp.reason);
+		epistemic_close_sys_time(rel, &loser_tid);
+		(void) epistemic_wal_log_evict(rel, &loser_tid, &slot->tts_tid,
+									   GetCurrentTimestamp(),
+									   (uint8) cmp.reason);
+		CommandCounterIncrement();
+	}
+
+	/*
+	 * Step 8: post-insert epistemic INSERT marker. heap's tuple_insert
+	 * wrote XLOG_HEAP_INSERT for durability; this XLOG_EPISTEMIC_INSERT
+	 * carries the epistemic prefix (kind/specificity/confidence) alongside
+	 * for audit / logical decoding. tuple_len = 0, no block ref registered.
+	 */
+	if (have_new_prefix && ItemPointerIsValid(&slot->tts_tid))
+		(void) epistemic_wal_log_insert_marker(rel, &slot->tts_tid, &new_prefix);
+}
+
+/*
+ * Insert one row into epistemic.evicted_fact describing the incumbent
+ * that lost the precedence comparison. Uses SPI so the JSONB payload is
+ * built by to_jsonb on the live server row rather than reconstructed
+ * from slot values in C. The winner's ctid is captured as text so the
+ * audit trail survives arbitrary later heap movement of the winner.
+ */
+static void
+epistemic_audit_evicted(Relation rel, ItemPointer loser_tid,
+						ItemPointer winner_tid,
+						EpistemicPrecedenceReason reason)
+{
+	Oid			nspoid;
+	const char *nspname;
+	const char *relname;
+	char	   *qualname;
+	StringInfoData sql;
+	Oid			argtypes[3] = { TEXTOID, TEXTOID, TIDOID };
+	Datum		values[3];
+	char		nulls[3] = { ' ', ' ', ' ' };
+	char		winnerbuf[64];
+	char		loserbuf[64];
+	int			ret;
+
+	nspoid = RelationGetNamespace(rel);
+	nspname = get_namespace_name(nspoid);
+	relname = RelationGetRelationName(rel);
+	if (nspname == NULL || relname == NULL)
+		elog(ERROR, "epistemic audit: could not resolve target name");
+	qualname = quote_qualified_identifier(nspname, relname);
+
+	initStringInfo(&sql);
+	appendStringInfo(&sql,
+		"INSERT INTO epistemic.evicted_fact "
+		"(reason, winner_ctid, original_kind, original_row) "
+		"SELECT $1::text, $2::text, f.ep_kind, to_jsonb(f) "
+		"FROM ONLY %s f WHERE ctid = $3::tid",
+		qualname);
+
+	values[0] = CStringGetTextDatum(
+		epistemic_precedence_reason_label(reason));
+
+	if (winner_tid != NULL && ItemPointerIsValid(winner_tid))
+	{
+		snprintf(winnerbuf, sizeof(winnerbuf), "(%u,%u)",
+				 ItemPointerGetBlockNumber(winner_tid),
+				 ItemPointerGetOffsetNumber(winner_tid));
+		values[1] = CStringGetTextDatum(winnerbuf);
+	}
+	else
+	{
+		values[1] = (Datum) 0;
+		nulls[1] = 'n';
+	}
+
+	snprintf(loserbuf, sizeof(loserbuf), "(%u,%u)",
+			 ItemPointerGetBlockNumber(loser_tid),
+			 ItemPointerGetOffsetNumber(loser_tid));
+	values[2] = DirectFunctionCall1(tidin, CStringGetDatum(loserbuf));
+
+	if ((ret = SPI_connect()) < 0)
+		elog(ERROR, "epistemic audit: SPI_connect failed: %d", ret);
+
+	ret = SPI_execute_with_args(sql.data, 3, argtypes, values, nulls,
+								false, 0);
+	if (ret != SPI_OK_INSERT)
+	{
+		SPI_finish();
+		elog(ERROR, "epistemic audit: SPI_execute_with_args returned %d", ret);
+	}
+	if (SPI_processed != 1)
+	{
+		int64		processed = (int64) SPI_processed;
+
+		SPI_finish();
+		elog(ERROR, "epistemic audit: expected 1 row inserted, got " INT64_FORMAT,
+			 processed);
+	}
+
+	SPI_finish();
+	pfree(sql.data);
+}
+
+/*
+ * Physically close the incumbent's sys_time upper bound to now(). The
+ * incumbent lives at loser_tid; we deform, rewrite EP_ATTR_SYS_TIME, and
+ * simple_heap_update in place. valid_time is preserved.
+ */
+static void
+epistemic_close_sys_time(Relation rel, ItemPointer loser_tid)
+{
+	HeapTupleData tuple;
+	Buffer		buffer;
+	Snapshot	snap;
+	TupleDesc	tupdesc;
+	int			natts;
+	Datum	   *values;
+	bool	   *isnull;
+	bool	   *replace;
+	RangeType  *oldrange;
+	RangeType  *newrange;
+	RangeBound	oldlb;
+	RangeBound	olduB;
+	RangeBound	newlb;
+	RangeBound	newub;
+	bool		empty;
+	TypeCacheEntry *tc;
+	HeapTuple	newtup;
+	TU_UpdateIndexes update_indexes;
+
+	tupdesc = RelationGetDescr(rel);
+	natts = tupdesc->natts;
+
+	ItemPointerCopy(loser_tid, &tuple.t_self);
+	snap = GetActiveSnapshot();
+	if (!heap_fetch(rel, snap, &tuple, &buffer, false))
+		elog(ERROR, "epistemic evict: could not fetch incumbent tuple");
+
+	values = (Datum *) palloc0(natts * sizeof(Datum));
+	isnull = (bool *) palloc0(natts * sizeof(bool));
+	replace = (bool *) palloc0(natts * sizeof(bool));
+
+	heap_deform_tuple(&tuple, tupdesc, values, isnull);
+
+	if (isnull[EP_ATTR_SYS_TIME - 1])
+	{
+		ReleaseBuffer(buffer);
+		elog(ERROR, "epistemic evict: incumbent sys_time is NULL");
+	}
+
+	oldrange = DatumGetRangeTypeP(values[EP_ATTR_SYS_TIME - 1]);
+	tc = lookup_type_cache(RangeTypeGetOid(oldrange), TYPECACHE_RANGE_INFO);
+	range_deserialize(tc, oldrange, &oldlb, &olduB, &empty);
+	(void) olduB;
+
+	newlb = oldlb;
+	newub.val = TimestampTzGetDatum(GetCurrentTimestamp());
+	newub.infinite = false;
+	newub.inclusive = true;
+	newub.lower = false;
+
+	newrange = make_range(tc, &newlb, &newub, false, NULL);
+
+	values[EP_ATTR_SYS_TIME - 1] = RangeTypePGetDatum(newrange);
+	isnull[EP_ATTR_SYS_TIME - 1] = false;
+	replace[EP_ATTR_SYS_TIME - 1] = true;
+
+	newtup = heap_modify_tuple(&tuple, tupdesc, values, isnull, replace);
+	ReleaseBuffer(buffer);
+
+	ItemPointerCopy(loser_tid, &newtup->t_self);
+
+	simple_heap_update(rel, &newtup->t_self, newtup, &update_indexes);
+
+	heap_freetuple(newtup);
+	pfree(values);
+	pfree(isnull);
+	pfree(replace);
 }
 
 /*

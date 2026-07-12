@@ -1,0 +1,69 @@
+-- am_eviction.sql: exercise the eviction path end-to-end.
+--
+-- After a NEW_WINS precedence outcome, the incumbent's sys_time upper
+-- bound must be closed to now(), a row appended to epistemic.evicted_fact
+-- with reason + winner_ctid + original_kind + original_row jsonb, and an
+-- XLOG_EPISTEMIC_INSERT marker written for the new tuple.
+CREATE EXTENSION IF NOT EXISTS epistemic;
+NOTICE:  extension "epistemic" already exists, skipping
+-- Register the source used by the INFERRED incumbent (R2).
+INSERT INTO epistemic.source_registry (source_id, source_type)
+VALUES ('s1', 'device')
+ON CONFLICT (source_id) DO NOTHING;
+CREATE TABLE fact_e (
+    entity_id     int NOT NULL,
+    attribute     text NOT NULL,
+    value         text,
+    sources       text[],
+    valid_time    tstzrange,
+    sys_time      tstzrange DEFAULT tstzrange(now(), 'infinity'),
+    ep_kind       epistemic.epistemic_kind NOT NULL,
+    ep_specificity int2 NOT NULL DEFAULT 0,
+    ep_confidence real NOT NULL DEFAULT 1.0
+) USING epistemic;
+-- 1. Insert INFERRED with low specificity.
+INSERT INTO fact_e (entity_id, attribute, value, sources, valid_time, ep_kind, ep_specificity, ep_confidence)
+VALUES (7, 'bp', 'low', ARRAY['s1'], tstzrange('2026-01-01', 'infinity'), 'INFERRED', 10, 0.5);
+-- 2. Insert MEASURED (higher rank) -- should win, evict the INFERRED.
+INSERT INTO fact_e (entity_id, attribute, value, valid_time, ep_kind)
+VALUES (7, 'bp', '120/80', tstzrange('2026-01-01', 'infinity'), 'MEASURED');
+-- 3. Both rows are physically present; only MEASURED is 'live'
+--    (sys_time upper = 'infinity'). The INFERRED row's upper bound
+--    must have been closed to a finite timestamp.
+SELECT ep_kind,
+       value,
+       upper(sys_time) = 'infinity'::timestamptz AS live,
+       upper(sys_time) < 'infinity'::timestamptz AS closed
+FROM fact_e WHERE entity_id = 7 ORDER BY ep_kind::text;
+ ep_kind  | value  | live | closed 
+----------+--------+------+--------
+ INFERRED | low    | f    | t
+ MEASURED | 120/80 | t    | f
+(2 rows)
+
+-- 4. Audit trail must have one row for the evicted INFERRED, with a
+--    non-null winner_ctid and the JSONB snapshot of the incumbent row.
+SELECT reason,
+       winner_ctid IS NOT NULL AS has_winner_ctid,
+       original_kind,
+       original_row->>'value' AS original_value,
+       original_row->>'entity_id' AS original_entity
+FROM epistemic.evicted_fact
+WHERE original_row->>'entity_id' = '7';
+ reason | has_winner_ctid | original_kind | original_value | original_entity 
+--------+-----------------+---------------+----------------+-----------------
+ none   | t               | INFERRED      | low            | 7
+(1 row)
+
+-- 5. The valid_time of the incumbent must NOT have been touched
+--    (bitemporal correctness: only sys_time gets closed on eviction).
+SELECT ep_kind::text AS kind,
+       lower(valid_time) = '2026-01-01'::timestamptz AS valid_lo_ok,
+       upper(valid_time) = 'infinity'::timestamptz AS valid_hi_infinity
+FROM fact_e WHERE entity_id = 7 AND ep_kind::text = 'INFERRED';
+   kind   | valid_lo_ok | valid_hi_infinity 
+----------+-------------+-------------------
+ INFERRED | t           | t
+(1 row)
+
+DROP TABLE fact_e;

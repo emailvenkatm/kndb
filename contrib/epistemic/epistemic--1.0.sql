@@ -61,3 +61,14 @@ CREATE TABLE epistemic.slot_kind (
     attribute      text PRIMARY KEY,
     required_kind  epistemic.epistemic_kind NOT NULL
 );
+
+-- Source registry: every source_id that may appear in a fact row's
+-- `sources` array must be registered here (R2 semantics — advisor
+-- decision, all-defaults). This is the "Option A" resolution model;
+-- Option B (self-referential entity_ids) is documented in the paper
+-- as a variant but not the demonstrated PoC choice.
+CREATE TABLE epistemic.source_registry (
+    source_id     text PRIMARY KEY,
+    source_type   text NOT NULL,
+    added_at      timestamptz NOT NULL DEFAULT clock_timestamp()
+);

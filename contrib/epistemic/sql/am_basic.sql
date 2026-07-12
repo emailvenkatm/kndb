@@ -1,6 +1,12 @@
 -- am_basic.sql: exercise the epistemic table AM insert path.
 CREATE EXTENSION IF NOT EXISTS epistemic;
 
+-- Register the source used by the INFERRED test below so R2 (source
+-- resolution) does not preempt R4 (INFERRED confidence < 1.0).
+INSERT INTO epistemic.source_registry (source_id, source_type)
+VALUES ('x', 'test')
+ON CONFLICT DO NOTHING;
+
 CREATE TABLE fact (
     entity_id     int NOT NULL,
     attribute     text NOT NULL,
