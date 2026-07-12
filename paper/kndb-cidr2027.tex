@@ -60,19 +60,44 @@
 % ---- Author block (PLACEHOLDER -- DO NOT SUBMIT). -----------------------
 % =========================================================================
 % AUTHOR BLOCK PLACEHOLDER -- REPLACE BEFORE SUBMISSION
-% Real author list pending team sign-off. Do not submit with these
-% placeholders in place. CIDR is SINGLE-BLIND, so real names go here.
+% Four author slots; names and affiliations pending team sign-off. CIDR is
+% SINGLE-BLIND, so real names, institutions, cities, countries, and email
+% addresses must all be filled in before the CMT upload. Do not submit
+% with these bracketed placeholders in place.
 % =========================================================================
-\author{Anonymous Placeholder}
-\authornote{Real author list pending team sign-off.
-  Do not submit with placeholder values in place.}
+\author{[Author 1 Name]}
+\authornote{All four author slots are placeholders pending team sign-off.
+  Do not submit this manuscript until every bracketed field
+  ([Author N Name], [Institution], [City], [Country], [email]) is
+  replaced with a real value.}
 \affiliation{%
-  \institution{[Institution pending]}
+  \institution{[Institution]}
   \city{[City]}
-  \country{[Country]}
-}
-\email{[email address pending]}
-\renewcommand{\shortauthors}{Anonymous et al.}
+  \country{[Country]}}
+\email{[email]}
+
+\author{[Author 2 Name]}
+\affiliation{%
+  \institution{[Institution]}
+  \city{[City]}
+  \country{[Country]}}
+\email{[email]}
+
+\author{[Author 3 Name]}
+\affiliation{%
+  \institution{[Institution]}
+  \city{[City]}
+  \country{[Country]}}
+\email{[email]}
+
+\author{[Author 4 Name]}
+\affiliation{%
+  \institution{[Institution]}
+  \city{[City]}
+  \country{[Country]}}
+\email{[email]}
+
+\renewcommand{\shortauthors}{[Authors] et al.}
 
 % =========================================================================
 
@@ -81,7 +106,7 @@
 \begin{document}
 
 \begin{abstract}
-Databases enforce data types but are blind to data origin. A verified measurement, a model's inference, and a value computed from other values are stored identically, and the distinction between them is lost at the moment of writing. This mattered less when humans wrote most records. It matters now: enrichment pipelines, reverse-ETL syncs, and AI agents write model-generated values into production stores beside verified facts at scale, while regulators increasingly require that automated decisions be explainable in terms of what they rested on. We argue that a fact's epistemic kind, whether it was measured, inferred, or derived, belongs in the database engine as an enforced, first-class property. We present KNDB, a prototype built on stock PostgreSQL and the ProvSQL extension, in which epistemic kind governs three things: what may be written (typed write rules checked by triggers before commit), which value survives a conflict (a precedence lattice in which a measurement cannot be displaced by an inference, regardless of arrival order or asserted confidence), and what a fact may be used for (compliance and training views that exclude inferred values by construction). Confidence composes through joins via semiring provenance, and bitemporal validity supports point-in-time reconstruction. On an adversarial suite of 70 trust-violating writes, KNDB rejects all 70; a plain schema rejects none and carefully written application-layer guards reject 30. A hand-built trigger schema also rejects all 70, which is precisely our point: the guarantee is achievable by hand, once, per application, forever. The alternative is to enforce it once in the engine, where no writer can forget it. We report costs honestly, including a size-dependent write penalty attributable to provenance bookkeeping, and outline the isolation regime under which its guarantees hold.
+Databases enforce data types but are blind to data origin. A verified measurement, a model's inference, and a value computed from other values are stored identically, and the distinction between them is lost at the moment of writing. This mattered less when humans wrote most records. It matters now: enrichment pipelines, reverse-ETL syncs, and AI agents write model-generated values into production stores beside verified facts at scale, while regulators increasingly require that automated decisions be explainable in terms of what they rested on. We argue that a fact's epistemic kind, whether it was measured, inferred, or derived, belongs at the database layer, enforced by triggers, constraints, and provenance extensions rather than in application code. We present KNDB, a prototype built on stock PostgreSQL and the ProvSQL extension, in which epistemic kind governs three things: what may be written (typed write rules checked by triggers before commit), which value survives a conflict (a precedence lattice in which a measurement cannot be displaced by an inference, regardless of arrival order or asserted confidence), and what a fact may be used for (compliance and training views that exclude inferred values by construction). Confidence composes through joins via semiring provenance, and bitemporal validity supports point-in-time reconstruction. On an adversarial suite of 70 trust-violating writes, KNDB rejects all 70; a plain schema rejects none and carefully written application-layer guards reject 30. A hand-built trigger schema also rejects all 70, which is precisely our point: the guarantee is achievable by hand, once, per application, forever. The alternative is to enforce it once in the engine, where no writer can forget it. We report costs honestly, including a size-dependent write penalty attributable to provenance bookkeeping, and outline the isolation regime under which its guarantees hold.
 \end{abstract}
 
 \maketitle
@@ -91,11 +116,11 @@ Relational databases enforce data types: a column declared numeric will not acce
 
 For decades this blindness was tolerable because most writers were humans or deterministic programs. That assumption no longer holds. Data-enrichment pipelines sync vendor-modeled attributes into CRM fields where verified values live; measured single-provider accuracy for such enrichment runs roughly 65--85\%, and an analysis of twelve billion Salesforce records found 45\% duplicate records overall but 80\% among records created via API integrations. Machine-written data is demonstrably dirtier than human-entered data, and nothing in the schema says which is which~\cite{revblack}. Reverse-ETL products push model scores and predicted attributes into operational stores as a standard workflow. Recent work from Microsoft Research found that across nineteen frontier models, LLM agents on long delegated tasks silently degrade the content they write, with roughly 25\% corruption over twenty interactions for the strongest models, and more degradation when the agents were given file-writing tools~\cite{corrupt}. Meanwhile the consequences of conflated origin are documented: master-data platforms configured ``most recent wins'' let an unverified CRM address displace a postal-verified one~\cite{mdm}; the CFPB requires creditors to state accurate, specific reasons for adverse decisions even when produced by complex models~\cite{cfpb2023}; Equifax was fined \$15M in part for flawed code producing inaccurate scores~\cite{equifax}; and training pipelines must keep model-generated data out of verified corpora to avoid model collapse~\cite{collapse}, today via entire external decontamination pipelines bolted onto stores that have no origin concept.
 
-Our position is simple. The epistemic kind of a fact, whether it was measured, inferred, or derived, is a property of the data, and it belongs in the storage engine: enforced at write time, carried through queries, and consulted at use time. Application code can implement these checks. But the argument for moving them into the engine is the one that moved referential integrity there decades ago. A database has many writers, those writers change over time, and a guarantee that depends on every one of them behaving is not a guarantee at all. Our evaluation makes this concrete.
+Our position is simple. The epistemic kind of a fact, whether it was measured, inferred, or derived, is a property of the data, and it belongs at the database layer --- enforced by triggers and constraints inside the DBMS rather than in application code: enforced at write time, carried through queries, and consulted at use time. Application code can implement these checks. But the argument for moving them into the engine is the one that moved referential integrity there decades ago. A database has many writers, those writers change over time, and a guarantee that depends on every one of them behaving is not a guarantee at all. Our evaluation makes this concrete.
 
 This paper makes four contributions:
 \begin{enumerate}
-\item \textbf{Epistemic typing as an engine primitive.} Every fact carries a kind (MEASURED, INFERRED, DERIVED) and a confidence; five write-time rules (\S3) are enforced by BEFORE triggers, so an inferred value cannot enter a slot registered as measured, and a derived fact must cite its sources.
+\item \textbf{Epistemic typing as a database-layer primitive.} Every fact carries a kind (MEASURED, INFERRED, DERIVED) and a confidence; five write-time rules (\S3) are enforced by BEFORE triggers, so an inferred value cannot enter a slot registered as measured, and a derived fact must cite its sources.
 \item \textbf{Epistemic precedence for conflict resolution.} Colliding writes are resolved by an ordered lattice --- kind, then specificity, then confidence --- under which a measurement cannot be silently displaced by an inference regardless of arrival order or asserted confidence. Losing facts are preserved in an audit relation with a machine-readable reason.
 \item \textbf{Kind-scoped use.} Views for compliance, analytics, and training-safe workloads make origin-scoped reading the default rather than a per-query convention, and a progressive-depth operator widens a query from measured-only through inferred and derived while reporting the confidence cost of the widening.
 \item \textbf{An honest evaluation.} On an adversarial suite, KNDB and a hand-built steelman both catch 70/70 violations while application-layer guards catch 30/70 and a plain schema 0/70; semiring-propagated confidence is exact where both baselines that skip it drift by 0.21 mean absolute error; and we quantify a size-dependent write cost attributable to provenance bookkeeping rather than claiming enforcement is free.
@@ -153,6 +178,8 @@ The losing fact --- whether the incumbent or the newcomer --- is written to \tex
 
 This directly repairs the survivorship failure of \S2: under KNDB the postal-verified address is MEASURED, the CRM update is INFERRED or lower-specificity, and no timestamp ordering can invert that. Both last-writer-wins and confidence-wins are special cases the lattice deliberately rejects: the former ranks on time, the latter on a scalar a model asserts about itself, and a model is often most confident where it is most wrong.
 
+When a source cited by a DERIVED fact's \texttt{sources[]} is later evicted by the lattice, the source row remains in the table with a closed \texttt{sys\_time}; the derived row's references therefore still resolve under R2, and the derived fact remains live. This is a bitemporal choice, not an oversight: the DERIVED fact was validly derived from what the store believed at the time, and a bitemporal engine preserves that history rather than retroactively rewriting it. Flagging or recomputing derivations whose sources have moved on is a deliberate future-work extension, orthogonal to the write-time rules the paper claims.
+
 \subsection{Confidence through queries}
 Each fact carries a ProvSQL provenance token; an AFTER trigger binds the fact's confidence to its token. Queries evaluated under the Viterbi semiring~\cite{provsql,green} return results whose confidence is the product of their supporting facts' confidences along a derivation (max across alternatives): joining a 0.95 measurement with a 0.70 inference yields 0.665, computed by the engine, not by every application re-implementing (or forgetting) the arithmetic. \S4 quantifies what the baselines that skip this get wrong.
 
@@ -165,7 +192,7 @@ Three views make origin-scoped reading a default: \texttt{fact\_compliance} (MEA
 \section{Evaluation}
 \noindent\textbf{Setup.} PostgreSQL 17.10 and ProvSQL 1.10.0, native ARM64 (Apple silicon), no emulation; seed 42; adversarial suite of 100 write payloads (70 trust-violating, 30 legal) executed 10 times; dataset for loaded runs is 11,637 Synthea~\cite{synthea} synthetic patients yielding 615,658 typed facts. Four systems: \texttt{kndb}; \texttt{pg\_naive} (plain schema); \texttt{py\_guards} (application-layer checks in Python, 41 LOC); \texttt{pg\_handrolled} (a steelman: hand-written triggers reproducing the typing and lattice rules, 124 LOC, no confidence propagation). KNDB's engine totals 508 LOC, of which 214 are guard logic.
 
-\noindent\textbf{Enforcement.} Table~\ref{tab:adv} shows the headline: the plain schema accepts every violation; carefully written application guards catch fewer than half; both engine-resident approaches catch all of them. We emphasize the steelman's 70/70 rather than hiding it: the guarantee is achievable by hand, provided every application, on every table, re-implements it correctly, forever. The 30/70 row is what that assumption looks like in practice.
+\noindent\textbf{Enforcement.} Table~\ref{tab:adv} shows the headline: the plain schema accepts every violation; carefully written application guards catch fewer than half; both engine-resident approaches catch all of them. We emphasize the steelman's 70/70 rather than hiding it. What separates KNDB is reuse, not enforcement power: KNDB defines the guarantee once at the database layer where it applies to every writer of the shared store, whereas the steelman's triggers are a per-application, per-table implementation. Similarly, the py\_guards 30/70 does not claim application-layer enforcement cannot work; it shows what such enforcement typically looks like when re-implemented per application at 41 LOC of scope.
 
 \begin{table}[h]
 \centering\small
@@ -192,9 +219,9 @@ pg\_naive & 0 & --- & --- & --- \\
 \noindent\textbf{Reproducibility.} \texttt{make smoke} runs an eleven-stage end-to-end self-validation (write acceptance, R5 rejection, lattice precedence including the high-confidence-inference-versus-lower-confidence-measurement case, Viterbi arithmetic to within $10^{-3}$, bitemporal reads, depth monotonicity, view exclusions, audit reasons) in 2 seconds warm; a fresh clone reaches a passing suite in 9.6 seconds. All numbers in this paper carry paths to their raw CSV/JSON in the repository.
 
 \section{Related Work}
-\noindent\textbf{Provenance and probabilistic databases.} Semiring provenance~\cite{green} and ProvSQL~\cite{provsql} supply our propagation machinery; probabilistic systems such as Trio~\cite{trio} and MayBMS~\cite{maybms} pioneered uncertainty as data. KNDB's claim is not the mathematics but its enforcement position: kind and confidence checked at write time and consulted at conflict- and use-time in a general-purpose store, rather than available to queries that opt in.
+\noindent\textbf{Provenance and probabilistic databases.} Semiring provenance~\cite{green} and ProvSQL~\cite{provsql} supply our propagation machinery; probabilistic systems such as Trio~\cite{trio} and MayBMS~\cite{maybms} pioneered uncertainty as data. Widiaatmaja et al.~\cite{provsqlupd} extend ProvSQL with update provenance and demonstrate a temporal database over a union-of-intervals m-semiring, sharing our provenance substrate; that contribution is a demonstration of temporal and update provenance, while KNDB adds write-time epistemic-kind enforcement, kind-ranked conflict resolution, and use-scoping on top. KNDB's claim is not the mathematics but its enforcement position: kind and confidence checked at write time and consulted at conflict- and use-time in a general-purpose store, rather than available to queries that opt in.
 
-\noindent\textbf{Agent-memory systems.} A recent line of work brings temporal and contradiction machinery to LLM-agent memory: TOKI~\cite{toki} types contradiction-resolution heuristics as bitemporal operators with provenance-preserving audit rows and soundness theorems; related systems add typed memory representations and governed retrieval~\cite{memir,gsm}. We adopt the same classical substrates (bitemporal models, provenance) but differ in scope and mechanism: these systems manage one agent's belief store, whereas KNDB proposes origin as an engine property of a shared, general-purpose database with many writers; and none of them types the data itself epistemically, ranks conflicts by that kind, or scopes use by it.
+\noindent\textbf{Agent-memory systems.} A recent line of work brings temporal and contradiction machinery to LLM-agent memory: TOKI~\cite{toki} types contradiction-resolution heuristics as bitemporal operators with provenance-preserving audit rows and soundness theorems; related systems add typed memory representations and governed retrieval~\cite{memir,gsm}. We adopt the same classical substrates (bitemporal models, provenance) but differ in scope and mechanism: these systems manage one agent's belief store, whereas KNDB proposes origin as an engine property of a shared, general-purpose database with many writers; and none of them types the data itself epistemically, ranks conflicts by that kind, or scopes use by it. Romanchuk and Bondar~\cite{semlaunder} formalize \emph{semantic laundering} --- the way generated propositions gain unearned epistemic status when they cross trusted boundaries --- as an architectural Gettier problem. KNDB is a concrete database-layer instantiation of that guardrail: the write-time kind check is precisely the boundary at which such laundering can be refused.
 
 \noindent\textbf{MDM and data standards.} Master-data survivorship with source trust scores~\cite{informatica} is the closest industrial practice: it ranks sources at merge time, in a hub, by configuration. KNDB ranks the epistemic kind of each fact, at write time, in the engine, with the loser preserved and the reason recorded. FHIR's observation status and W3C PROV~\cite{prov} demonstrate that standards bodies recognize the measured-versus-derived distinction; they specify how to represent it, not an engine that enforces it. Active databases and production-rule systems~\cite{hipac} contributed specificity-based conflict resolution; our lattice composes that classical idea with an epistemic axis it did not have.
 
@@ -219,6 +246,9 @@ T. Green, G. Karvounarakis, and V. Tannen. 2007. Provenance semirings. In \emph{
 \bibitem{provsql}
 P. Senellart, L. Jachiet, S. Maniu, and Y. Ramusat. 2018. ProvSQL: provenance and probability management in PostgreSQL. \emph{Proceedings of the VLDB Endowment}, 11(12).
 
+\bibitem{provsqlupd}
+A. A. Widiaatmaja, B. Djeffal, A. Dandekar, and P. Senellart. 2025. Demonstration of ProvSQL update provenance through temporal databases. In \emph{Proceedings of ProvenanceWeek (PW) 2025}, Berlin.
+
 \bibitem{trio}
 J. Widom. 2005. Trio: a system for integrated management of data, accuracy, and lineage. In \emph{Proceedings of CIDR 2005}.
 
@@ -229,10 +259,13 @@ C. Koch et al. 2009. MayBMS: a probabilistic database management system. In \emp
 Z. Wang. 2026. TOKI: a bitemporal operator algebra for contradiction resolution in LLM-agent persistent memory. \emph{arXiv preprint arXiv:2606.06240}.
 
 \bibitem{memir}
-Authors. 2026. MemIR: typed memory representations for agent retrieval. \emph{arXiv preprint arXiv:2605.25869}.
+Z. Jin, B. Wang, J. Li, R. Xu, and M. Zhang. 2026. Mitigating provenance-role collapse in long-term agents via typed memory representation. \emph{arXiv preprint arXiv:2605.25869}.
 
 \bibitem{gsm}
-Authors. 2026. Governed shared memory for multi-agent systems. \emph{arXiv preprint arXiv:2606.24535}.
+Y. Margalit, N. Cohen-Inger, E. Avram, R. Taig, and O. Margalit. 2026. Governed shared memory for multi-agent LLM systems. \emph{arXiv preprint arXiv:2606.24535}.
+
+\bibitem{semlaunder}
+O. Romanchuk and R. Bondar. 2026. Semantic laundering in AI agent architectures: why tool boundaries do not confer epistemic warrant. \emph{arXiv preprint arXiv:2601.08333}.
 
 \bibitem{collapse}
 I. Shumailov, Z. Shumaylov, Y. Zhao, N. Papernot, R. Anderson, and Y. Gal. 2024. AI models collapse when trained on recursively generated data. \emph{Nature}, 631.
