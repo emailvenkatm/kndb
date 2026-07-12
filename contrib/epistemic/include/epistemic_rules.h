@@ -1,11 +1,9 @@
 /*
  * epistemic_rules.h
  *
- * The five write-time rules (R1-R5) as pure C predicates operating
- * on an in-memory slot. Each returns true on success (rule holds) and
- * false on violation; the caller emits the ereport.
- *
- * Owner: Agent C (type + rules).
+ * R1..R5 as C predicates over an in-memory slot. Each returns true on
+ * success (rule holds) and false on violation; the caller emits the
+ * ereport with SQLSTATE.
  */
 #ifndef EPISTEMIC_RULES_H
 #define EPISTEMIC_RULES_H

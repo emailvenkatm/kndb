@@ -1,10 +1,11 @@
 /*
  * epistemic_precedence.h
  *
- * The precedence lattice: kind > specificity > confidence, with an
- * arrival tie-breaker for a true tie. Pure C over EpistemicPrefix.
- *
- * Owner: Agent C (type + rules).
+ * Precedence lattice: kind rank > specificity > confidence. On a true
+ * tie (equal on all three) the serial-arrival policy is NEW_WINS.
+ * That branch is exercised on the single-session path only; under
+ * concurrent same-prefix inserts it is unreachable and the outcome
+ * is decided by SSI (see DECISIONS.md F4).
  */
 #ifndef EPISTEMIC_PRECEDENCE_H
 #define EPISTEMIC_PRECEDENCE_H
@@ -44,12 +45,12 @@ typedef struct EpistemicCmpResult
 } EpistemicCmpResult;
 
 /*
- * Compare incumbent vs new epistemic prefixes; ties are broken by
- * arrival order (new wins on true tie, matching plpgsql).
+ * Compare incumbent vs new. Ties are broken by arrival order (new
+ * wins on true tie), matching the plpgsql implementation.
  */
 extern EpistemicCmpResult
-epistemic_precedence_cmp(const EpistemicPrefix *incumbent,
-						 const EpistemicPrefix *new);
+epistemic_precedence_cmp(const EpistemicMeta *incumbent,
+						 const EpistemicMeta *new);
 
 /*
  * kind_rank(k): MEASURED=3, DERIVED=2, INFERRED=1. Exposed so tests

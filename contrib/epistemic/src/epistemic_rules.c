@@ -1,9 +1,19 @@
 /*
  * epistemic_rules.c
  *
- * The five write-time rules (R1..R5) and the precedence lattice.
- * Rules read the incoming slot's user attributes plus the three
- * hidden epistemic-prefix attributes appended after EP_ATTR_SYS_TIME.
+ * Write-time rules R1..R5 and the precedence lattice. Rules read the
+ * incoming slot's user columns (EP_ATTR_ENTITY_ID..EP_ATTR_SYS_TIME
+ * from epistemic.h) plus the three meta columns kind/specificity/
+ * confidence at EP_ATTR_SYS_TIME + 1..3.
+ *
+ * Precedence tie policy on the serial-arrival path is
+ * arrival-order-wins: a second insert with identical
+ * (kind, specificity, confidence) supersedes the first
+ * (EP_CMP_NEW_WINS with reason EP_REASON_CONTRADICTED_SAME_RANK,
+ * cmp fn at bottom of file). Under concurrent inserts the tie
+ * branch is unreachable; outcome is decided by isolation-level
+ * plumbing (SSI abort under SERIALIZABLE, no protection under
+ * READ COMMITTED). See DECISIONS.md (F4) for the audit.
  */
 #include "postgres.h"
 #include "fmgr.h"
@@ -19,7 +29,7 @@
 #include "epistemic_rules.h"
 #include "epistemic_precedence.h"
 
-/* Hidden epistemic-prefix slot columns follow the six user columns. */
+/* Meta columns follow the six user columns; positions locked. */
 #define EP_ATTR_KIND			(EP_ATTR_SYS_TIME + 1)	/* int1/char */
 #define EP_ATTR_SPECIFICITY		(EP_ATTR_SYS_TIME + 2)	/* int2 */
 #define EP_ATTR_CONFIDENCE		(EP_ATTR_SYS_TIME + 3)	/* float4 */
@@ -367,8 +377,8 @@ epistemic_kind_rank(EpistemicKind k)
 }
 
 EpistemicCmpResult
-epistemic_precedence_cmp(const EpistemicPrefix *incumbent,
-						 const EpistemicPrefix *new)
+epistemic_precedence_cmp(const EpistemicMeta *incumbent,
+						 const EpistemicMeta *new)
 {
 	EpistemicCmpResult r;
 	int			inc_rank = epistemic_kind_rank(
@@ -432,8 +442,8 @@ epistemic_precedence_reason_label(EpistemicPrecedenceReason r)
 Datum
 epistemic_cmp_test(PG_FUNCTION_ARGS)
 {
-	EpistemicPrefix incumbent;
-	EpistemicPrefix newp;
+	EpistemicMeta incumbent;
+	EpistemicMeta newp;
 	EpistemicCmpResult res;
 	char		buf[64];
 

@@ -1,9 +1,14 @@
 -- epistemic--1.0.sql
 --
--- SQL surface for the epistemic table AM. The heavy lifting lives in C:
--- - table AM handler `epistemic_am_handler` returning a TableAmRoutine.
--- - custom WAL resource manager registered in _PG_init.
--- - base type `epistemic_kind` with C I/O.
+-- SQL surface for the epistemic table AM:
+--   * base type epistemic_kind (C I/O in src/epistemic_type.c)
+--   * TAM handler epistemic_am_handler (src/epistemic_am.c)
+--   * audit relation epistemic.evicted_fact
+--   * slot registry epistemic.slot_kind (R5)
+--   * source registry epistemic.source_registry (R2)
+--
+-- Custom WAL rmgr id 128 is registered in _PG_init (annotation
+-- channel; see src/epistemic_wal.c).
 
 \echo Use "CREATE EXTENSION epistemic" to load this file. \quit
 

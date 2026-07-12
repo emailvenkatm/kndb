@@ -58,10 +58,10 @@ typedef struct xl_epistemic_insert
 	RelFileLocator	rlocator;
 	OffsetNumber	offnum;
 	uint16			tuple_len;			/* always 0 for the annotation marker */
-	EpistemicPrefix	prefix;
+	EpistemicMeta	prefix;
 } xl_epistemic_insert;
 
-#define SizeOfEpistemicInsert	(offsetof(xl_epistemic_insert, prefix) + sizeof(EpistemicPrefix))
+#define SizeOfEpistemicInsert	(offsetof(xl_epistemic_insert, prefix) + sizeof(EpistemicMeta))
 
 /*
  * Rmgr registration entry point. Called from _PG_init. Requires that
@@ -79,13 +79,13 @@ extern void epistemic_rm_mask(char *pagedata, BlockNumber blkno);
 
 /*
  * The only surviving logger. Writes an annotation record naming the
- * new tuple's (rlocator, offnum) and its EpistemicPrefix. Does NOT
+ * new tuple's (rlocator, offnum) and its EpistemicMeta. Does NOT
  * carry tuple bytes and does NOT register a buffer; the row's
  * durability lives in heap's WAL. Return value is the XLogRecPtr of
  * the emitted record.
  */
 extern XLogRecPtr epistemic_wal_log_insert_marker(Relation rel,
 												  ItemPointer tid,
-												  const EpistemicPrefix *prefix);
+												  const EpistemicMeta *prefix);
 
 #endif   /* EPISTEMIC_WAL_H */

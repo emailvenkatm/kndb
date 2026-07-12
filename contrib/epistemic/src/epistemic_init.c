@@ -1,8 +1,10 @@
 /*
  * epistemic_init.c
  *
- * Extension load hook. Registers the custom WAL resource manager and
- * (in the future) any GUCs the extension exposes.
+ * Extension load hook. Registers the custom WAL resource manager
+ * (rmgr id 128, annotation channel — see epistemic_wal.c). Must run
+ * from shared_preload_libraries; RegisterCustomRmgr enforces this
+ * via process_shared_preload_libraries_in_progress.
  */
 #include "postgres.h"
 #include "fmgr.h"

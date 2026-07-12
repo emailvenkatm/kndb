@@ -1,9 +1,21 @@
 /*
  * epistemic.h
  *
- * Shared types for the epistemic table AM PoC. This header is the frozen
- * cross-module contract: EpistemicKind values, the fixed 8-byte on-disk
- * prefix, and the accessor macros.
+ * Cross-module contract for the epistemic table AM PoC.
+ *
+ * On disk, an epistemic row is a plain heap tuple. Storage is heap's;
+ * there is no hidden prefix, no reserved header bytes, and no
+ * AM-private on-disk format. The AM's contribution at write time is
+ * the tuple_insert callback (see src/epistemic_am.c): it runs R1..R5,
+ * probes for an overlapping live row, applies the precedence lattice,
+ * and delegates the actual insert to heapam. Every other TableAmRoutine
+ * callback delegates verbatim to heapam. See DECISIONS.md (F3 audit)
+ * for the disable-and-retest proof that durability comes from heap.
+ *
+ * The three "meta" columns kind/specificity/confidence live at fixed
+ * user-attribute positions after sys_time (EP_ATTR_KIND et al. in
+ * epistemic_am.c). EpistemicMeta below is an in-memory carrier for
+ * those three values; it is not an on-disk struct.
  */
 #ifndef EPISTEMIC_H
 #define EPISTEMIC_H
@@ -14,8 +26,8 @@
 #include "storage/itemptr.h"
 
 /*
- * Epistemic kind. Encoded as a single byte on disk. Values match the
- * user-facing text produced by epistemic_kind_out().
+ * Epistemic kind. Stored on disk as a single pass-by-value byte (see
+ * epistemic--1.0.sql for the base type). Byte values match the enum.
  */
 typedef enum EpistemicKind
 {
@@ -26,35 +38,25 @@ typedef enum EpistemicKind
 } EpistemicKind;
 
 /*
- * Fixed 8-byte epistemic prefix stored at the start of the user data
- * area of every epistemic tuple, immediately after HeapTupleHeaderData.
- * Alignment must be 4-byte to satisfy float4 access.
+ * In-memory carrier for the (kind, specificity, confidence) triple that
+ * the precedence lattice and the WAL annotation record operate on.
+ * Constructed by extract_prefix() in epistemic_am.c from the incoming
+ * slot's user columns; never read from disk directly.
  */
-typedef struct EpistemicPrefix
+typedef struct EpistemicMeta
 {
 	uint8		ep_kind;			/* EpistemicKind cast to uint8 */
 	uint8		ep_flags;			/* reserved: use 0 */
 	uint16		ep_specificity;		/* 0-255 (uint16 for alignment) */
 	float4		ep_confidence;		/* [0.0, 1.0] */
-} EpistemicPrefix;
-
-StaticAssertDecl(sizeof(EpistemicPrefix) == 8,
-				 "EpistemicPrefix must be 8 bytes; format is frozen");
+} EpistemicMeta;
 
 /*
- * Byte offset of the epistemic prefix within a heap-formatted tuple.
- * Callers must ensure the tuple was written by the epistemic AM.
- */
-#define EPISTEMIC_PREFIX_OFF(tup)	\
-	(((char *) (tup)) + ((HeapTupleHeader) (tup))->t_hoff)
-
-#define EPISTEMIC_PREFIX(tup)		\
-	((EpistemicPrefix *) EPISTEMIC_PREFIX_OFF(tup))
-
-/*
- * User-visible column layout in the epistemic AM. The DDL for an
- * epistemic relation must declare these columns in this order after
- * the hidden prefix.
+ * User-visible column positions in an epistemic relation. The DDL must
+ * declare these columns in this order; the AM reads them by attnum.
+ * The three meta columns (kind, specificity, confidence) follow at
+ * EP_ATTR_SYS_TIME + 1..3 (defined locally in epistemic_am.c and
+ * epistemic_rules.c because they are only referenced from those files).
  */
 #define EP_ATTR_ENTITY_ID	1
 #define EP_ATTR_ATTRIBUTE	2
@@ -63,14 +65,14 @@ StaticAssertDecl(sizeof(EpistemicPrefix) == 8,
 #define EP_ATTR_VALID_TIME	5			/* tstzrange */
 #define EP_ATTR_SYS_TIME	6			/* tstzrange */
 
-/* Convenience: safe kind cast from raw byte. */
+/* Safe kind cast from raw byte. */
 static inline EpistemicKind
 epistemic_kind_from_byte(uint8 b)
 {
 	return (b <= EK_DERIVED) ? (EpistemicKind) b : EK_INVALID;
 }
 
-/* Convenience: human-readable label for logs/errors. */
+/* Human-readable label for logs / errors. */
 static inline const char *
 epistemic_kind_label(EpistemicKind k)
 {

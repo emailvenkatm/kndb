@@ -8,7 +8,6 @@ MODULE_big	= epistemic
 OBJS = \
 	src/epistemic_init.o \
 	src/epistemic_am.o \
-	src/epistemic_tuple.o \
 	src/epistemic_wal.o \
 	src/epistemic_type.o \
 	src/epistemic_rules.o

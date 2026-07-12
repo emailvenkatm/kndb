@@ -1,21 +1,33 @@
 /*
  * epistemic_am.c
  *
- * Table access method handler for the epistemic AM. Wraps heapam's
- * TableAmRoutine: all callbacks delegate to heap except tuple_insert,
- * which runs the write-time rules and precedence lattice, hands the
- * row to heap for storage, and emits one epistemic annotation WAL
- * record on rmgr 128 for external consumers (pg_waldump). Durability
- * of the row is provided entirely by heap. See DECISIONS.md (F3
- * audit) for the disable-and-retest proof.
+ * Table access method handler. Copies heapam's TableAmRoutine at first
+ * handler call and overrides two entries:
  *
- * Serializable-isolation predicate locking is delegated to heapam:
- * find_live_overlap() runs a seqscan through heap_beginscan (which
- * calls PredicateLockRelation) and heap_insert (which calls
- * CheckForSerializableConflictIn). See DECISIONS.md for the audit
- * that established that an AM-level SSI hook would have been inert.
+ *   tuple_insert       -> epistemic_tuple_insert_impl (this file)
+ *   relation_toast_am  -> epistemic_relation_toast_am_impl
  *
- * User schema contract (enforced in epistemic_rules.c):
+ * Every other callback (~38 of them: scan, index-fetch, tuple_update,
+ * tuple_delete, tuple_lock, vacuum_rel, relation_size, freeze_lp,
+ * TOAST helpers, parallel scan, sampling, ...) is heap's. Rows on
+ * disk are plain heap tuples.
+ *
+ * tuple_insert_impl runs four steps in order and then delegates:
+ *   1. R1..R5 rule check              (epistemic_check_rules)
+ *   2. overlap probe on the same slot (find_live_overlap: seqscan)
+ *   3. precedence lattice cmp         (epistemic_precedence_cmp)
+ *   4. heap_insert of the winner      (heapam->tuple_insert)
+ *   5. post-insert eviction bookkeeping if the incumbent lost:
+ *      audit row into epistemic.evicted_fact (SPI),
+ *      close incumbent's sys_time upper bound (simple_heap_update)
+ *   6. annotation record on rmgr 128 (see epistemic_wal.c)
+ *
+ * SSI is heap's. find_live_overlap opens a seqscan through
+ * heap_beginscan -> PredicateLockRelation, and heap_insert itself
+ * calls CheckForSerializableConflictIn. The AM adds no lock target
+ * of its own. See DECISIONS.md (F1 audit).
+ *
+ * User schema contract enforced in epistemic_rules.c:
  *   1  entity_id     int4
  *   2  attribute     text
  *   3  value         text
@@ -56,7 +68,7 @@
 #include "epistemic_rules.h"
 #include "epistemic_wal.h"
 
-/* Hidden-prefix slot columns; must match epistemic_rules.c. */
+/* Meta-column attnums; must match epistemic_rules.c. */
 #define EP_ATTR_KIND			(EP_ATTR_SYS_TIME + 1)
 #define EP_ATTR_SPECIFICITY		(EP_ATTR_SYS_TIME + 2)
 #define EP_ATTR_CONFIDENCE		(EP_ATTR_SYS_TIME + 3)
@@ -156,9 +168,9 @@ extract_logical_key(TupleTableSlot *slot, int32 *entity_id,
 	return true;
 }
 
-/* Build the EpistemicPrefix from three trailing slot attributes. */
+/* Populate EpistemicMeta from the three trailing slot attributes. */
 static bool
-extract_prefix(TupleTableSlot *slot, EpistemicPrefix *out)
+extract_prefix(TupleTableSlot *slot, EpistemicMeta *out)
 {
 	bool		isnull;
 	Datum		d;
@@ -228,7 +240,7 @@ sys_time_is_open(TupleTableSlot *slot)
 static bool
 find_live_overlap(Relation rel, int32 want_entity, const char *want_attr,
 				  RangeType *want_valid, ItemPointer found_tid,
-				  EpistemicPrefix *found_prefix)
+				  EpistemicMeta *found_prefix)
 {
 	const TableAmRoutine *heapam;
 	TableScanDesc scan;
@@ -307,7 +319,7 @@ epistemic_tuple_insert_impl(Relation rel, TupleTableSlot *slot,
 	int64		valid_lower_secs = 0;
 	int64		valid_upper_secs = 0;
 	bool		have_key;
-	EpistemicPrefix new_prefix;
+	EpistemicMeta new_prefix;
 	bool		have_new_prefix;
 	const TableAmRoutine *heapam;
 	bool		have_eviction = false;
@@ -340,7 +352,7 @@ epistemic_tuple_insert_impl(Relation rel, TupleTableSlot *slot,
 	/* Steps 4/5: overlap scan + precedence. */
 	if (have_key && have_new_prefix)
 	{
-		EpistemicPrefix incumbent;
+		EpistemicMeta incumbent;
 
 		if (find_live_overlap(rel, entity_id, attribute, valid_time,
 							  &loser_tid, &incumbent))

@@ -1,105 +1,167 @@
-# contrib/epistemic
+contrib/epistemic
+=================
 
-Native C implementation of KNDB epistemic typing for PostgreSQL 18.4.
-Proof-of-concept sufficient to answer "isn't this just a schema template
-with triggers?" — no; the enforcement lives in the storage AM's
-`tuple_insert` callback, which no user-space trigger control can bypass.
-The custom WAL resource manager is an annotation channel, not part of
-the enforcement story; heapam owns durability. See DECISIONS.md (F3
-audit) for the reasoning.
+Native PostgreSQL 18 table access method that runs the KNDB epistemic
+write-time rules and precedence lattice from inside heapam's
+tuple_insert callback, then delegates storage to heap. Rows on disk
+are plain heap tuples. Every TableAmRoutine callback except
+tuple_insert and relation_toast_am is heap's, unmodified.
 
-## Layout
 
-    include/
-      epistemic.h              cross-module contract (frozen)
-      epistemic_am.h           TAM handler prototype
-      epistemic_wal.h          WAL record layout + rmgr entry points
-      epistemic_rules.h        R1..R5 predicates
-      epistemic_precedence.h   kind > specificity > confidence lattice
-    src/
-      epistemic_init.c         _PG_init (registers rmgr)
-      epistemic_am.c           TAM callbacks
-      epistemic_tuple.c        on-disk tuple format
-      epistemic_wal.c          rmgr callbacks + builders
-      epistemic_type.c         epistemic_kind C I/O
-      epistemic_rules.c        R1..R5 + precedence lattice
-    sql/ expected/ t/ bench/   regression + TAP
+Overview
+--------
 
-## Build
+The extension registers one access method (CREATE ACCESS METHOD
+epistemic ... HANDLER epistemic_am_handler) and one base type
+(epistemic_kind, a pass-by-value byte). On CREATE TABLE ... USING
+epistemic the resulting relation has heap's on-disk layout; the AM's
+tuple_insert wrapper runs R1..R5 (epistemic_rules.c), probes for a
+live overlapping row via seqscan (epistemic_am.c: find_live_overlap),
+runs the precedence lattice (epistemic_precedence_cmp), then calls
+heap's tuple_insert. If the incumbent lost, the wrapper writes one
+audit row to epistemic.evicted_fact via SPI and closes the
+incumbent's sys_time upper bound via simple_heap_update. Finally it
+emits one annotation record on custom rmgr 128 (epistemic_wal.c).
 
-Assumes `pg_config` on `PATH` resolves to a PostgreSQL 18 install with
-development headers.
+
+What is load-bearing
+--------------------
+
+The bypass-survival claim rides on the tuple_insert wrapper being
+reachable from every write path that a user-space trigger control
+cannot turn off. Concretely: the epistemic_check_rules call at
+epistemic_am.c step 1 is what rejects an R3-violating MEASURED insert.
+scripts/bypass.sh runs that insert under two bypass mechanisms
+(ALTER TABLE ... DISABLE TRIGGER ALL and
+SET session_replication_role = 'replica') against fact_native (this
+AM) and fact_trigger (heap + BEFORE INSERT trigger). The bad row
+lands on fact_trigger under both mechanisms and is rejected on
+fact_native under both. With the epistemic_check_rules call replaced
+by rule = EP_RULE_NONE, rebuilt, all four fact_native assertions in
+bypass.sh flip from OK to FAIL. That is the adversarial control. See
+DECISIONS.md (F2).
+
+Everything else in the wrapper — WAL annotation, precedence eviction,
+audit, sys_time close — is either delegated to heap for durability or
+exists for downstream consumers. It is not what the bypass claim
+rides on.
+
+
+What delegates to heap
+----------------------
+
+The AM copies heapam's TableAmRoutine at first handler call
+(epistemic_am_handler at epistemic_am.c) and overrides two entries:
+tuple_insert and relation_toast_am. The remaining ~38 callbacks
+(scan_begin, scan_getnextslot, tuple_fetch_row_version,
+tuple_update, tuple_delete, tuple_lock, index_fetch_*,
+relation_set_new_filelocator, relation_nontransactional_truncate,
+relation_copy_data, relation_copy_for_cluster, relation_vacuum,
+scan_analyze_next_block, scan_analyze_next_tuple,
+index_build_range_scan, index_validate_scan, relation_size,
+relation_needs_toast_table, relation_estimate_size, ...) are heap's.
+
+Durability of the row is heap's. The AM's custom rmgr writes a
+buffer-less annotation record after the insert; disabling it leaves
+recovery under wal_consistency_checking=all indistinguishable. The
+disable-and-retest transcript is in DECISIONS.md (F3): recovery.sh
+runs 110 inserts, crashes, recovers 110/110 rows with the marker
+disabled and with the marker plus the (now-deleted) evict logger
+disabled. Heap's XLOG_HEAP_INSERT (heapam.c:2222-2226 in
+REL_18_STABLE) carries every column, ep_kind and ep_specificity and
+ep_confidence included; heap_xlog_insert (heapam_xlog.c:482-503)
+reconstructs it at redo.
+
+
+Correctness envelope
+--------------------
+
+The "at most one live row per (entity_id, attribute) slot" invariant
+that sql/am_eviction.sql asserts holds under SERIALIZABLE isolation
+on a serial-arrival path. It does NOT hold under READ COMMITTED and
+concurrent same-slot writers: each session's find_live_overlap
+seqscan uses its own snapshot and cannot see the other session's
+uncommitted insert; both hit the empty-overlap branch, both
+heap_insert, both commit, two live rows land. This is not resolved
+by the epistemic rules and is not a bug in the rules — it is a
+consequence of MVCC visibility under weaker isolation. See
+DECISIONS.md (F4, section B) for the 50-trial transcript.
+
+Under SERIALIZABLE and two overlapping same-slot writers, one
+session aborts with SQLSTATE 40001; the survivor is whichever
+transaction PG did not choose to pivot-abort, which is
+commit-order-dependent, not content-dependent. The tie policy
+(EP_REASON_CONTRADICTED_SAME_RANK -> NEW_WINS) is exercised only on
+the serial path within a single session, where it is deterministic
+given a fixed arrival order.
+
+Fix 6 attempts to close both edges of this envelope
+(RC integrity leak; SR concurrent survivor non-determinism). See
+DECISIONS.md when it lands.
+
+
+Threat model
+------------
+
+The engine-in-storage bypass claim holds against a writer with
+INSERT + ALTER TABLE on the target relation, or a role that can
+toggle session_replication_role (PGC_SUSET; the profile of a
+replication/CDC operator, a migration tool, or a pool operator
+setting the GUC pool-wide). It does not hold against the table
+owner, who can ALTER TABLE ... SET ACCESS METHOD heap and rewrite
+the relation onto plain heap, at which point the AM callback is out
+of the write path entirely. That is a schema-change threat, not a
+write-path threat, and is out of scope. See DECISIONS.md (F2) for
+the PG 18 source citations on both bypass mechanisms
+(commands/tablecmds.c:5588-5592, commands/trigger.c:3489-3499).
+
+
+Build / test / run
+------------------
+
+Assumes pg_config on PATH resolves to a PG 18 install with headers.
 
     make
     make install
-    make installcheck            # regression tests
-    PROVE_TESTS='t/*.pl' make prove_installcheck   # TAP tests
+    make installcheck                              # 6 regression suites
+    PROVE_TESTS='t/*.pl' make prove_installcheck   # TAP (empty today)
+    make check-e2e                                 # 5 e2e scripts
 
-`shared_preload_libraries = 'epistemic'` is required for the WAL rmgr
-to be registered before recovery. This is set automatically by the TAP
-tests via the `PostgreSQL::Test::Cluster` framework.
+The extension requires shared_preload_libraries = 'epistemic' so the
+custom rmgr is registered before recovery. The e2e scripts and TAP
+harness set this automatically on their isolated clusters. For
+manual installcheck against a pre-existing cluster, add it to
+postgresql.conf and restart.
 
-## Scope
+check-e2e runs, on isolated clusters spun up in /tmp:
 
-Frozen for the PoC: the 8-byte `EpistemicPrefix` layout, one WAL
-annotation record type (INSERT), and the reason-code numbering.
-Out of scope: vacuum semantics beyond delegated-to-heap, parallel
-scan, TOAST, logical replication.
+    scripts/recovery.sh          crash + recovery, 110 rows round-trip
+    scripts/concurrency.sh       fair SSI check on native and trigger
+    scripts/bypass.sh            trigger-disable + replica-role bypass
+    scripts/crash_atomicity.sh   25 trials, eviction atomicity
+    scripts/tie_concurrency.sh   50 trials each at RC and SR, tie probe
 
-The custom rmgr (id 128) is an annotation channel only. After each
-row is inserted, the AM writes an `XLOG_EPISTEMIC_INSERT` record
-naming `(rlocator, offnum, kind, specificity, confidence)`. The
-record carries no tuple bytes and registers no buffer; heap's own
-`XLOG_HEAP_INSERT` (heapam.c:2209-2231 in REL_18_STABLE) already
-carries the full row, and `heap_xlog_insert`
-(heapam_xlog.c:417-503) reconstructs it at redo. The epistemic
-record has no downstream consumer today: rm_decode is NULL so
-logical decoding skips it (decode.c:115-117), and PG 18's standalone
-`pg_waldump` does not load custom rmgrs so it renders the record as
-`custom128 UNKNOWN (10) rmid: 128`. The record exists so
-`sql/wal.sql`'s rm_id=128 probe reflects a real emitted record and
-so the annotation channel is available for a future logical-decoding
-consumer. Its removal makes no observable difference to recovery
-under `wal_consistency_checking=all` — the F3 audit transcript in
-DECISIONS.md is the proof.
+Baseline counts after F4: installcheck 6/6, check-e2e 5/5.
 
-## Success metrics
 
-1. `make check` green (six regression suites).
-2. `scripts/recovery.sh` round-trips a crash under
-   `wal_consistency_checking = all` with no PANIC and exact row count.
-   Recovery here is provided by heapam's WAL, not by the epistemic
-   rmgr; the script is retained as an end-to-end sanity check that
-   the AM's write path doesn't corrupt pages, and as evidence that
-   the custom rmgr coexists cleanly with `wal_consistency_checking`.
-3. `scripts/concurrency.sh` runs a two-session overlap under
-   SERIALIZABLE against both fact_native and a scan-equipped
-   fact_trigger; both paths abort at least one session. This is
-   standard heapam SSI, inherited by both engines; it is not evidence
-   of any epistemic-specific serialization mechanism.
-4. `scripts/bypass.sh` runs an R3-violating insert under
-   `ALTER TABLE ... DISABLE TRIGGER ALL` and under
-   `SET session_replication_role = 'replica'`. The bad row lands on
-   fact_trigger and is rejected on fact_native. This is the paper's
-   load-bearing engine-in-storage claim: an AM's `tuple_insert`
-   callback is not reachable from user-space trigger controls.
+Layout
+------
 
-## Threat model for the bypass claim
-
-The bypass claim assumes the attacker is a writer with INSERT and
-ALTER TABLE on the target relation, or a role that can toggle
-`session_replication_role`. It does not hold against the table owner,
-who can `ALTER TABLE ... SET ACCESS METHOD heap` and rewrite the
-table off the epistemic AM entirely. That is a schema-change threat,
-distinct from the write-path bypass we demonstrate here; the paper
-should state both scopes explicitly.
-
-## What is load-bearing
-
-The write-path claim depends on `epistemic_check_rules` being called
-from inside `epistemic_tuple_insert_impl` before the heap insert. If
-that call is removed, `scripts/bypass.sh` flips 4/4 fact_native
-assertions from OK to FAIL — the R3-violating row lands on both
-tables. Everything else in the AM (WAL annotation, precedence eviction,
-audit) is either delegated to heapam or exists for downstream
-consumers, and is not what the bypass claim rides on.
+    include/
+      epistemic.h              cross-module contract, EpistemicMeta
+      epistemic_am.h           TAM handler prototype
+      epistemic_wal.h          rmgr entry points + record layout
+      epistemic_rules.h        R1..R5 predicate prototypes
+      epistemic_precedence.h   precedence lattice + reason codes
+    src/
+      epistemic_init.c         _PG_init, registers rmgr 128
+      epistemic_am.c           tuple_insert wrapper, delegation
+      epistemic_wal.c          rmgr callbacks + marker builder
+      epistemic_type.c         epistemic_kind C I/O
+      epistemic_rules.c        R1..R5 + precedence cmp
+    sql/  expected/            6 regression suites
+    scripts/                   5 end-to-end shell tests
+    t/                         TAP harness (empty)
+    epistemic--1.0.sql         extension SQL
+    epistemic.control          extension control
+    DECISIONS.md               F1..F4 engineering audits

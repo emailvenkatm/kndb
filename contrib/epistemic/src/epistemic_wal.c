@@ -1,19 +1,18 @@
 /*
  * epistemic_wal.c
  *
- * Custom WAL resource manager for the epistemic AM. See
- * include/epistemic_wal.h for the scope statement. Short version:
- * this rmgr is an ANNOTATION CHANNEL only. Heap's XLOG_HEAP_INSERT
- * carries the full tuple (heapam.c:2222-2226 in PG 18 REL_18_STABLE
- * registers the tuple body via XLogRegisterBufData) and
- * heap_xlog_insert reconstructs it at redo (heapam_xlog.c:482-503).
- * The epistemic marker record here is not required for durability
- * and its removal makes no observable difference to recovery under
- * wal_consistency_checking=all — verified in the F3 audit whose
- * disable-and-retest transcript is quoted in DECISIONS.md.
+ * Annotation channel, not durability. Heap's XLOG_HEAP_INSERT
+ * (heapam.c:2222-2226, REL_18_STABLE) already carries every byte of
+ * the row, and heap_xlog_insert reconstructs it at redo
+ * (heapam_xlog.c:482-503). Disabling the marker below leaves recovery
+ * under wal_consistency_checking=all indistinguishable; see
+ * DECISIONS.md (F3) for the disable-and-retest transcript.
  *
- * rm_decode is NULL. PG 18's standalone pg_waldump does not load
- * custom rmgrs, so external decoding is not currently available.
+ * rm_decode is NULL, so logical decoding
+ * (decode.c:LogicalDecodingProcessRecord, 115-117) skips these
+ * records. PG 18's standalone pg_waldump does not load custom rmgrs,
+ * so external decoding is unavailable; rm_desc runs only under
+ * in-process wal_debug tracing.
  */
 #include "postgres.h"
 
@@ -111,7 +110,7 @@ epistemic_rm_mask(char *pagedata, BlockNumber blkno)
 
 XLogRecPtr
 epistemic_wal_log_insert_marker(Relation rel, ItemPointer tid,
-								const EpistemicPrefix *prefix)
+								const EpistemicMeta *prefix)
 {
 	xl_epistemic_insert xlrec;
 
