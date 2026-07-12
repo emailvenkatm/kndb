@@ -101,7 +101,7 @@
 
 % =========================================================================
 
-\title{KNDB: Epistemic Typing as a First-Class Database Primitive}
+\title[KNDB]{KNDB: Epistemic Typing as a Database-Layer Primitive}
 
 \begin{document}
 
@@ -225,7 +225,7 @@ pg\_naive & 0 & --- & --- & --- \\
 
 \noindent\textbf{MDM and data standards.} Master-data survivorship with source trust scores~\cite{informatica} is the closest industrial practice: it ranks sources at merge time, in a hub, by configuration. KNDB ranks the epistemic kind of each fact, at write time, in the engine, with the loser preserved and the reason recorded. FHIR's observation status and W3C PROV~\cite{prov} demonstrate that standards bodies recognize the measured-versus-derived distinction; they specify how to represent it, not an engine that enforces it. Active databases and production-rule systems~\cite{hipac} contributed specificity-based conflict resolution; our lattice composes that classical idea with an epistemic axis it did not have.
 
-\noindent\textbf{Positioning.} Every mechanism in KNDB has ancestry. Our contribution is the position that origin should be a first-class, engine-enforced property governing writes, conflicts, and use in a general-purpose store, together with evidence that the composition is buildable in 508 lines on stock infrastructure, with measurable enforcement value and measured, structured cost.
+\noindent\textbf{Positioning.} Every mechanism in KNDB has ancestry. Our contribution is the position that origin should be a database-layer property governing writes, conflicts, and use in a general-purpose store, together with evidence that the composition is buildable in 508 lines on stock infrastructure, with measurable enforcement value and measured, structured cost.
 
 \section{Limitations and Future Work}
 KNDB governs origin, not value correctness: a correctly-labeled measured write carrying a wrong number passes; that is the province of CHECK constraints and validation, which are complementary. Preliminary concurrency testing indicates KNDB's enforcement guarantees hold under single-writer workloads or PostgreSQL SERIALIZABLE isolation; full characterization across isolation levels and contention regimes is in progress. The audit trail for rejected (as opposed to evicted) writes further requires an autonomous-transaction path we have scoped out. The specificity axis is exercised by tests but its calibration across real organizations is open. ProvSQL's propagation cost motivates either batched \texttt{set\_prob} maintenance or propagation-on-read designs. An epistemically-aware validation layer --- stricter plausibility checks for inferred values than measured ones --- is a natural extension we deliberately did not build. Finally, the deepest open question is standardization: if origin belongs in the engine, it ultimately belongs in SQL.
@@ -274,7 +274,7 @@ I. Shumailov, Z. Shumaylov, Y. Zhao, N. Papernot, R. Anderson, and Y. Gal. 2024.
 P. Laban, T. Schnabel, and J. Neville. 2026. LLMs corrupt your documents when you delegate. Microsoft Research / arXiv preprint, April 2026.
 
 \bibitem{codec}
-Authors. 2025. CoDeC: detecting data contamination in LLMs via in-context learning. \emph{arXiv preprint arXiv:2510.27055}.
+M. Zawalski, M. Boubdir, K. Bałazy, B. Nushi, and P. Ribalta. 2025. CoDeC: detecting data contamination in LLMs via in-context learning. \emph{arXiv preprint arXiv:2510.27055}.
 
 \bibitem{cfpb2023}
 Consumer Financial Protection Bureau. 2023. Circular 2023-03: adverse action notification requirements. September 2023.
