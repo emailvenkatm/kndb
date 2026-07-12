@@ -45,8 +45,37 @@ scan, TOAST, logical replication.
 
 ## Success metrics
 
-1. `make check` green.
-2. TAP recovery test round-trips a crash under
-   `wal_consistency_checking = all`.
-3. TAP concurrency test shows the native path rejects an interleaving
-   the trigger-based version admits.
+1. `make check` green (six regression suites).
+2. `scripts/recovery.sh` round-trips a crash under
+   `wal_consistency_checking = all` with no PANIC and exact row count.
+3. `scripts/concurrency.sh` runs a two-session overlap under
+   SERIALIZABLE against both fact_native and a scan-equipped
+   fact_trigger; both paths abort at least one session. This is
+   standard heapam SSI, inherited by both engines; it is not evidence
+   of any epistemic-specific serialization mechanism.
+4. `scripts/bypass.sh` runs an R3-violating insert under
+   `ALTER TABLE ... DISABLE TRIGGER ALL` and under
+   `SET session_replication_role = 'replica'`. The bad row lands on
+   fact_trigger and is rejected on fact_native. This is the paper's
+   load-bearing engine-in-storage claim: an AM's `tuple_insert`
+   callback is not reachable from user-space trigger controls.
+
+## Threat model for the bypass claim
+
+The bypass claim assumes the attacker is a writer with INSERT and
+ALTER TABLE on the target relation, or a role that can toggle
+`session_replication_role`. It does not hold against the table owner,
+who can `ALTER TABLE ... SET ACCESS METHOD heap` and rewrite the
+table off the epistemic AM entirely. That is a schema-change threat,
+distinct from the write-path bypass we demonstrate here; the paper
+should state both scopes explicitly.
+
+## What is load-bearing
+
+The write-path claim depends on `epistemic_check_rules` being called
+from inside `epistemic_tuple_insert_impl` before the heap insert. If
+that call is removed, `scripts/bypass.sh` flips 4/4 fact_native
+assertions from OK to FAIL — the R3-violating row lands on both
+tables. Everything else in the AM (WAL markers, precedence eviction,
+audit) is either delegated to heapam or exists for downstream
+consumers, and is not what the bypass claim rides on.

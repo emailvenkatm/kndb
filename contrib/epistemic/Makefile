@@ -40,31 +40,35 @@ include $(PGXS)
 # Run explicitly with:  make -C contrib/epistemic check-e2e
 # ------------------------------------------------------------------
 
-.PHONY: check-e2e check-e2e-recovery check-e2e-concurrency
+.PHONY: check-e2e check-e2e-recovery check-e2e-concurrency check-e2e-bypass
 
 check-e2e-recovery:
-	@echo "===> Metric 1: recovery.sh"
+	@echo "===> recovery.sh"
 	@bash $(srcdir)/scripts/recovery.sh
 
 check-e2e-concurrency:
-	@echo "===> Metric 2: concurrency.sh"
+	@echo "===> concurrency.sh"
 	@bash $(srcdir)/scripts/concurrency.sh
+
+check-e2e-bypass:
+	@echo "===> bypass.sh"
+	@bash $(srcdir)/scripts/bypass.sh
 
 check-e2e:
 	@set -e; \
-	rc_recovery=0; rc_concurrency=0; \
-	echo "===> Metric 1: recovery.sh"; \
+	rc_recovery=0; rc_concurrency=0; rc_bypass=0; \
+	echo "===> recovery.sh"; \
 	bash $(srcdir)/scripts/recovery.sh || rc_recovery=$$?; \
-	echo "===> Metric 2: concurrency.sh"; \
+	echo "===> concurrency.sh"; \
 	bash $(srcdir)/scripts/concurrency.sh || rc_concurrency=$$?; \
-	echo "===> check-e2e summary: recovery=$$rc_recovery concurrency=$$rc_concurrency"; \
-	if [ $$rc_recovery -eq 0 ] && [ $$rc_concurrency -eq 0 ]; then \
+	echo "===> bypass.sh"; \
+	bash $(srcdir)/scripts/bypass.sh || rc_bypass=$$?; \
+	echo "===> check-e2e summary: recovery=$$rc_recovery concurrency=$$rc_concurrency bypass=$$rc_bypass"; \
+	if [ $$rc_recovery -eq 0 ] && [ $$rc_concurrency -eq 0 ] && [ $$rc_bypass -eq 0 ]; then \
 	    echo "check-e2e: PASS"; exit 0; \
-	elif [ $$rc_concurrency -eq 2 ]; then \
-	    echo "check-e2e: PARTIAL (concurrency reported honest negative result, exit 2)"; \
-	    exit $$rc_concurrency; \
 	else \
 	    echo "check-e2e: FAIL"; \
-	    [ $$rc_recovery -ne 0 ] && exit $$rc_recovery; \
-	    exit $$rc_concurrency; \
+	    [ $$rc_recovery -ne 0 ]    && exit $$rc_recovery; \
+	    [ $$rc_concurrency -ne 0 ] && exit $$rc_concurrency; \
+	    exit $$rc_bypass; \
 	fi
