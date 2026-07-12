@@ -4,6 +4,194 @@ Short notes recording load-bearing design choices and, where useful, the
 audit that produced them. New entries go on top. Each entry is dated and
 identifies the code paths involved.
 
+## 2026-07-12, F4: eviction atomicity is PG's, tie survival is order-dependent
+
+Two audits. Neither finds an epistemic-specific mechanism; both name
+what the AM actually contributes and what it inherits from PG 18.
+
+### A. Eviction atomicity
+
+The eviction path in `epistemic_tuple_insert_impl` does three state
+changes when a new fact evicts an incumbent:
+
+  1. `heap_insert` of the winner (epistemic_am.c:362)
+  2. SPI `INSERT INTO epistemic.evicted_fact` (epistemic_am.c:378,
+     via `epistemic_audit_evicted`)
+  3. `simple_heap_update` closing the incumbent's `sys_time` upper
+     bound (epistemic_am.c:379, via `epistemic_close_sys_time`)
+
+All three run inside a single top-level PG transaction. That
+transaction is not created by the AM — it is created by
+`start_xact_command` at src/backend/tcop/postgres.c:2787-2794
+REL_18_STABLE, which `exec_simple_query` calls at postgres.c:1046
+before parsing the statement and again at postgres.c:1349 via
+`finish_xact_command` (postgres.c:2825-2848) after the parsetree
+loop finishes. In the default-block arm at xact.c:3069-3072,
+`StartTransactionCommand` calls `StartTransaction()`. So a single
+top-level INSERT is one transaction; the AM's three heap changes are
+one atomic unit as a side effect. The AM does not open, commit, or
+manage any transaction.
+
+`scripts/crash_atomicity.sh` runs 25 trials on a fresh cluster with
+`fsync=on`, `synchronous_commit=on`, `wal_consistency_checking=all`.
+Each trial: reset state, insert one INFERRED incumbent, CHECKPOINT,
+fire ${EVICTIONS_PER_TRIAL}=400 per-row MEASURED inserts (each one
+evicts the current winner) as a background psql, race a
+`pg_ctl stop -m immediate` after 20ms, restart, count
+`(live, audit, closed)` for `(entity=7, attribute='bp')`. Tuned
+delay catches every trial mid-batch. Result:
+
+  trial  live audit closed total verdict
+  1      1    228   228    229   OK
+  2      1    190   190    191   OK
+  ...
+  10     1    80    80     81    OK
+  ...
+  25     1    197   197    198   OK
+  ---
+  invariant_violations: 0/25
+
+Every trial: exactly one live row, `audit == closed`, and
+`live + closed == audit + 1` (the +1 is the current live winner
+that has not itself been evicted). Never `live=0` (incumbent lost
+without a replacement), never `live=2` (winner AND incumbent both
+live), never `audit != closed` (audit and evicted-tuple diverged).
+
+Adversarial control. `scripts/crash_atomicity_broken.sh` installs a
+BEFORE INSERT trigger on `epistemic.evicted_fact` that opens a
+dblink connection to the same DB and executes a shadow INSERT into
+`epistemic.evicted_fact_shadow`. `dblink_exec` runs on a fresh
+backend with its own top-level transaction which commits on
+function return, so shadow rows are durable as soon as the trigger
+returns — independent of the outer statement's commit. Same 25-trial
+race:
+
+  trial  live audit_shadow closed audit_real verdict
+  1      1    9            9      9          OK
+  2      1    11           10     10         VIOLATION_shadow!=closed(11!=10)
+  3      1    8            8      8          OK
+  ...
+  ---
+  invariant_violations: 1/25
+
+Trial 2: 11 shadow audit rows are durable on the dblink side, but only
+10 evictions were committed in the main-txn table. One shadow audit
+row is now an orphan — the main-txn eviction it recorded was
+discarded when redo tossed the un-COMMIT-flushed final statement.
+`crash_atomicity_broken.sh` typically produces 1-2 violations per 25
+trials because the crash has to land in the microsecond window between
+the trigger's dblink commit and the outer statement's WAL flush; the
+narrow window is exactly why atomicity holds when the audit is inside
+the main txn instead of outside it.
+
+Reservation. The invariant we assert here is a bitemporal live-slot
+invariant. The AM is not a schema of arbitrary user constraints; a
+different invariant (e.g., "audit row's timestamp matches winner's
+sys_time.lower") would require different tests. The scope of this
+audit is: does the crash test flag any state that the AM produces
+but that recovery leaves torn? Answer: no, and the negative control
+proves the test can catch a torn state when one exists.
+
+Attribution. Atomicity of the three-step eviction is PG's. The AM's
+contribution is that it does the three steps INSIDE the tuple_insert
+callback, so a user cannot forget to wrap them. That is a
+convenience claim, not a novel durability claim. README and paper
+draft phrased accordingly.
+
+### B. Precedence tie under concurrency
+
+`epistemic_precedence_cmp` at src/epistemic_rules.c:401-407 handles
+the same-rank/same-specificity/same-confidence case by returning
+`EP_CMP_NEW_WINS` with reason `EP_REASON_CONTRADICTED_SAME_RANK`. On
+the serial path this is arrival-order-wins: a second identical
+insert AFTER the first commits will succeed and evict the first
+(confirmed at sql/precedence.sql:24 and again in the invert probe
+below).
+
+`scripts/tie_concurrency.sh` runs 50 trials each under READ
+COMMITTED and SERIALIZABLE with two sessions inserting overlapping
+rows carrying IDENTICAL (kind, specificity, confidence) for
+`(entity_id=1, attribute='bp')`. Only `value` differs so we can name
+the survivor.
+
+  ISO=READ COMMITTED s1=0 s2=0 both=50 none=0 abort=0 rule=0
+  ISO=SERIALIZABLE   s1=50 s2=0 both=0 none=0 abort=50 rule=0
+
+Under READ COMMITTED all 50 trials leave TWO live rows in the slot.
+Each session's `find_live_overlap` seqscan uses its own MVCC
+snapshot and cannot see the other session's uncommitted insert; both
+sessions think they are the first writer; neither hits the tie code.
+That is an integrity failure and it is NOT resolved by the epistemic
+rules — the sql/am_eviction.sql invariant "one live row per
+(entity_id, attribute) slot" only holds under SERIALIZABLE or
+stricter, and only on a serial-arrival path within a session.
+
+Under SERIALIZABLE, session1 (started first) wins all 50 trials;
+session2 aborts with SQLSTATE 40001 in all 50. The mechanism is
+heap_insert calling `CheckForSerializableConflictIn` at
+src/backend/access/heap/heapam.c:2127 REL_18_STABLE, which consults
+predicate locks acquired by the other session's seqscan
+(relation-level, via `PredicateLockRelation`). `predicate.c:4336-
+4389` (REL_18_STABLE) shows the granularity-promoted lock check.
+The tie branch is STILL not reached: session2 aborts before its
+heap_insert even calls back into the precedence code.
+
+Adversarial control. `scripts/tie_concurrency_invert.sh` patches
+`epistemic_rules.c` in place to flip the tie branch to
+`EP_CMP_NEW_LOSES`, rebuilds, installs, runs the sequential probe,
+and restores the source. Under the patched build a second identical
+INSERT in the same session raises:
+
+  ERROR:  epistemic precedence: NEW_LOSES (reason=contradicted_same_rank)
+
+and the first row is the sole survivor. That proves the tie branch
+in the honest build is load-bearing on the serial path — the current
+"NEW_WINS on tie" is a deliberate policy, not an artifact. The
+patched build's concurrent behavior is IDENTICAL to the honest
+build's (session1 wins, session2 40001s), confirming that under
+concurrency the tie policy is not what determines the outcome.
+
+Findings, plainly:
+
+  * Tie policy in the AM is arrival-order-wins on the serial path
+    (later same-prefix insert supersedes earlier). This is
+    deterministic given a fixed arrival order.
+  * Under concurrent inserts with identical prefix, the tie branch
+    is unreachable. Outcome is decided by isolation-level plumbing:
+      - READ COMMITTED: both writes commit, integrity is violated.
+      - SERIALIZABLE:   one writer aborts under SSI; survivor is
+                        whichever transaction PG did not choose to
+                        pivot-abort — commit-order-dependent, not
+                        content-dependent.
+  * There is no content-deterministic concurrent tie resolution.
+    The paper draft's phrasing has been updated to say exactly
+    that. If deterministic concurrent tie resolution becomes a
+    load-bearing claim, the fix is either (a) an in-AM total order
+    on ties (e.g., lower `ctid` wins, or a hashed
+    `(entity_id, attribute, xmin, value)` comparator), or (b)
+    reject-both on tie (the invert-branch policy), which is
+    content-deterministic but drops one write.
+
+Attribution. The AM contributes the serial tie policy (which is
+exercised in single-session insert streams). Concurrent tie
+resolution is PG's — SSI abort under SERIALIZABLE, no protection
+under READ COMMITTED. Neither is unique to the epistemic PoC.
+
+### Files touched
+
+  * scripts/crash_atomicity.sh          — new, honest crash test
+  * scripts/crash_atomicity_broken.sh   — new, dblink-based
+                                          adversarial control
+  * scripts/tie_concurrency.sh          — new, concurrent tie probe
+  * scripts/tie_concurrency_invert.sh   — new, adversarial rebuild
+                                          probe
+  * Makefile                            — new check-e2e-crash,
+                                          check-e2e-tie targets;
+                                          check-e2e aggregates now
+                                          runs all five e2e scripts
+
+installcheck: 6/6 pass unchanged.
+
 ## 2026-07-12, F3: rmgr 128 is an annotation channel, not a durability channel
 
 Heap's XLOG_HEAP_INSERT already carries every byte of every column

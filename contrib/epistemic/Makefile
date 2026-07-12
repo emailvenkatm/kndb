@@ -40,7 +40,8 @@ include $(PGXS)
 # Run explicitly with:  make -C contrib/epistemic check-e2e
 # ------------------------------------------------------------------
 
-.PHONY: check-e2e check-e2e-recovery check-e2e-concurrency check-e2e-bypass
+.PHONY: check-e2e check-e2e-recovery check-e2e-concurrency check-e2e-bypass \
+        check-e2e-crash check-e2e-tie
 
 check-e2e-recovery:
 	@echo "===> recovery.sh"
@@ -54,21 +55,35 @@ check-e2e-bypass:
 	@echo "===> bypass.sh"
 	@bash $(srcdir)/scripts/bypass.sh
 
+check-e2e-crash:
+	@echo "===> crash_atomicity.sh"
+	@bash $(srcdir)/scripts/crash_atomicity.sh
+
+check-e2e-tie:
+	@echo "===> tie_concurrency.sh"
+	@bash $(srcdir)/scripts/tie_concurrency.sh
+
 check-e2e:
 	@set -e; \
-	rc_recovery=0; rc_concurrency=0; rc_bypass=0; \
+	rc_recovery=0; rc_concurrency=0; rc_bypass=0; rc_crash=0; rc_tie=0; \
 	echo "===> recovery.sh"; \
 	bash $(srcdir)/scripts/recovery.sh || rc_recovery=$$?; \
 	echo "===> concurrency.sh"; \
 	bash $(srcdir)/scripts/concurrency.sh || rc_concurrency=$$?; \
 	echo "===> bypass.sh"; \
 	bash $(srcdir)/scripts/bypass.sh || rc_bypass=$$?; \
-	echo "===> check-e2e summary: recovery=$$rc_recovery concurrency=$$rc_concurrency bypass=$$rc_bypass"; \
-	if [ $$rc_recovery -eq 0 ] && [ $$rc_concurrency -eq 0 ] && [ $$rc_bypass -eq 0 ]; then \
+	echo "===> crash_atomicity.sh"; \
+	bash $(srcdir)/scripts/crash_atomicity.sh || rc_crash=$$?; \
+	echo "===> tie_concurrency.sh"; \
+	bash $(srcdir)/scripts/tie_concurrency.sh || rc_tie=$$?; \
+	echo "===> check-e2e summary: recovery=$$rc_recovery concurrency=$$rc_concurrency bypass=$$rc_bypass crash=$$rc_crash tie=$$rc_tie"; \
+	if [ $$rc_recovery -eq 0 ] && [ $$rc_concurrency -eq 0 ] && [ $$rc_bypass -eq 0 ] && [ $$rc_crash -eq 0 ] && [ $$rc_tie -eq 0 ]; then \
 	    echo "check-e2e: PASS"; exit 0; \
 	else \
 	    echo "check-e2e: FAIL"; \
 	    [ $$rc_recovery -ne 0 ]    && exit $$rc_recovery; \
 	    [ $$rc_concurrency -ne 0 ] && exit $$rc_concurrency; \
-	    exit $$rc_bypass; \
+	    [ $$rc_bypass -ne 0 ]      && exit $$rc_bypass; \
+	    [ $$rc_crash -ne 0 ]       && exit $$rc_crash; \
+	    exit $$rc_tie; \
 	fi
