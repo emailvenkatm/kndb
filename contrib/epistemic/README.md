@@ -11,18 +11,16 @@ resource manager, and the SSI predicate-lock path.
       epistemic.h              cross-module contract (frozen)
       epistemic_am.h           TAM handler prototype
       epistemic_wal.h          WAL record layout + rmgr entry points
-      epistemic_ssi.h          SSI predicate-lock wrappers
       epistemic_rules.h        R1..R5 predicates
       epistemic_precedence.h   kind > specificity > confidence lattice
     src/
       epistemic_init.c         _PG_init (registers rmgr)
-      epistemic_am.c           TAM callbacks               [Agent A]
-      epistemic_tuple.c        on-disk tuple format        [Agent A]
-      epistemic_wal.c          rmgr callbacks + builders   [Agent B]
-      epistemic_type.c         epistemic_kind C I/O        [Agent C]
-      epistemic_rules.c        R1..R5 + precedence lattice [Agent C]
-      epistemic_ssi.c          predicate-lock wrappers     [Agent D]
-    sql/ expected/ t/ bench/   Agent E
+      epistemic_am.c           TAM callbacks
+      epistemic_tuple.c        on-disk tuple format
+      epistemic_wal.c          rmgr callbacks + builders
+      epistemic_type.c         epistemic_kind C I/O
+      epistemic_rules.c        R1..R5 + precedence lattice
+    sql/ expected/ t/ bench/   regression + TAP
 
 ## Build
 

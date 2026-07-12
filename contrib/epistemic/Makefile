@@ -11,14 +11,13 @@ OBJS = \
 	src/epistemic_tuple.o \
 	src/epistemic_wal.o \
 	src/epistemic_type.o \
-	src/epistemic_rules.o \
-	src/epistemic_ssi.o
+	src/epistemic_rules.o
 
 EXTENSION	= epistemic
 DATA		= epistemic--1.0.sql
 PGFILEDESC	= "epistemic - native epistemic typing table AM (PoC)"
 
-REGRESS			= type precedence wal ssi am_basic r2_sources am_eviction
+REGRESS			= type precedence wal am_basic r2_sources am_eviction
 REGRESS_OPTS	= --load-extension=epistemic
 
 TAP_TESTS = 1

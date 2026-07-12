@@ -3,10 +3,16 @@
  *
  * Table access method handler for the epistemic AM. Wraps heapam's
  * TableAmRoutine: all callbacks delegate to heap except tuple_insert,
- * which runs the write-time rule/precedence/SSI/WAL machinery before
- * handing the row to heap for actual storage.
+ * which runs the write-time rules and precedence lattice, emits the
+ * epistemic WAL markers, and hands the row to heap for storage.
  *
- * User schema contract (frozen by Agent C's rules module):
+ * Serializable-isolation predicate locking is delegated to heapam:
+ * find_live_overlap() runs a seqscan through heap_beginscan (which
+ * calls PredicateLockRelation) and heap_insert (which calls
+ * CheckForSerializableConflictIn). See DECISIONS.md for the audit
+ * that established that an AM-level SSI hook would have been inert.
+ *
+ * User schema contract (enforced in epistemic_rules.c):
  *   1  entity_id     int4
  *   2  attribute     text
  *   3  value         text
@@ -16,8 +22,6 @@
  *   7  ep_kind       epistemic.epistemic_kind
  *   8  ep_specificity int2
  *   9  ep_confidence float4
- *
- * Owner: Agent A (TAM storage layer).
  */
 #include "postgres.h"
 #include "fmgr.h"
@@ -47,7 +51,6 @@
 #include "epistemic_am.h"
 #include "epistemic_precedence.h"
 #include "epistemic_rules.h"
-#include "epistemic_ssi.h"
 #include "epistemic_wal.h"
 
 /* Hidden-prefix slot columns; must match epistemic_rules.c. */
@@ -320,11 +323,16 @@ epistemic_tuple_insert_impl(Relation rel, TupleTableSlot *slot,
 								   &valid_lower_secs, &valid_upper_secs);
 	have_new_prefix = extract_prefix(slot, &new_prefix);
 
-	/* Step 3: SSI slot predicate lock (no-op outside SERIALIZABLE). */
-	if (have_key)
-		epistemic_predicate_lock_slot(rel, entity_id, attribute,
-									  valid_lower_secs, valid_upper_secs,
-									  GetActiveSnapshot());
+	(void) valid_lower_secs;
+	(void) valid_upper_secs;
+
+	/*
+	 * SSI is handled by heapam itself: the seqscan below runs through
+	 * heap_beginscan, which calls PredicateLockRelation, and the delegated
+	 * heap_insert calls CheckForSerializableConflictIn. Both take effect
+	 * automatically. See DECISIONS.md ("F1: predicate locking") for the
+	 * audit that showed why an AM-level hook is neither needed nor useful.
+	 */
 
 	/* Steps 4/5: overlap scan + precedence. */
 	if (have_key && have_new_prefix)
@@ -561,21 +569,3 @@ epistemic_am_handler(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(&epistemic_am_methods);
 }
 
-/*
- * Legacy prototype kept alive because the header (frozen contract with
- * Agent B/C/D) still exposes it. Not used by the AM routine; the actual
- * insert path is epistemic_tuple_insert_impl above.
- */
-ItemPointerData
-epistemic_insert_tuple(Relation rel, TupleTableSlot *slot,
-					   CommandId cid, int options)
-{
-	ItemPointerData tid;
-
-	(void) rel;
-	(void) slot;
-	(void) cid;
-	(void) options;
-	ItemPointerSetInvalid(&tid);
-	return tid;
-}
