@@ -18,7 +18,7 @@ EXTENSION	= epistemic
 DATA		= epistemic--1.0.sql
 PGFILEDESC	= "epistemic - native epistemic typing table AM (PoC)"
 
-REGRESS			= type precedence wal ssi
+REGRESS			= type precedence wal ssi am_basic
 REGRESS_OPTS	= --load-extension=epistemic
 
 TAP_TESTS = 1
