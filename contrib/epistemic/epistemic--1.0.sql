@@ -7,7 +7,9 @@
 
 \echo Use "CREATE EXTENSION epistemic" to load this file. \quit
 
-CREATE SCHEMA IF NOT EXISTS epistemic;
+-- Schema is created by the extension mechanism because epistemic.control
+-- declares `schema = epistemic`. Do not CREATE SCHEMA here; PG 18 rejects
+-- IF NOT EXISTS on the extension-owned schema at install time.
 
 -- Base type for the epistemic kind. C I/O in src/epistemic_type.c.
 CREATE FUNCTION epistemic.epistemic_kind_in(cstring)

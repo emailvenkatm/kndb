@@ -1,0 +1,9 @@
+-- wal.sql: verify the custom WAL resource manager is registered.
+CREATE EXTENSION IF NOT EXISTS epistemic;
+NOTICE:  extension "epistemic" already exists, skipping
+SELECT rm_name FROM pg_get_wal_resource_managers() WHERE rm_id = 128;
+  rm_name  
+-----------
+ epistemic
+(1 row)
+

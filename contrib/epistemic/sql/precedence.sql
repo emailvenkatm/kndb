@@ -1,0 +1,24 @@
+CREATE EXTENSION IF NOT EXISTS epistemic;
+-- Test-only wrapper around epistemic_precedence_cmp.
+-- Signature: (inc_kind int, inc_spec int, inc_conf real,
+--             new_kind int, new_spec int, new_conf real)
+--   returns 'NEW_WINS(<reason>)' | 'NEW_LOSES(<reason>)'
+-- Kind byte values: MEASURED=0, INFERRED=1, DERIVED=2.
+CREATE FUNCTION epistemic._cmp_test(int, int, real, int, int, real)
+    RETURNS text
+    AS '$libdir/epistemic', 'epistemic_cmp_test'
+    LANGUAGE C IMMUTABLE STRICT;
+-- Rank tie-break: incumbent MEASURED (0) beats new INFERRED (1).
+SELECT epistemic._cmp_test(0, 10, 0.9::real, 1, 200, 1.0::real);
+-- Rank promotion: new MEASURED beats incumbent DERIVED even with lower conf.
+SELECT epistemic._cmp_test(2, 200, 0.99::real, 0, 10, 0.1::real);
+-- Specificity tie-break: same rank, incumbent has higher specificity.
+SELECT epistemic._cmp_test(0, 100, 0.5::real, 0, 50, 0.9::real);
+-- Specificity promotion: same rank, new has higher specificity.
+SELECT epistemic._cmp_test(0, 50, 0.9::real, 0, 100, 0.5::real);
+-- Confidence tie-break: same rank + spec, incumbent has higher conf.
+SELECT epistemic._cmp_test(1, 50, 0.9::real, 1, 50, 0.5::real);
+-- Confidence promotion: same rank + spec, new has higher conf.
+SELECT epistemic._cmp_test(1, 50, 0.5::real, 1, 50, 0.9::real);
+-- Same-rank contradiction: all three fields exactly equal.
+SELECT epistemic._cmp_test(2, 50, 0.5::real, 2, 50, 0.5::real);

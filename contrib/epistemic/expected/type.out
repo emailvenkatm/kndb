@@ -1,0 +1,36 @@
+CREATE EXTENSION IF NOT EXISTS epistemic;
+NOTICE:  extension "epistemic" already exists, skipping
+SELECT 'MEASURED'::epistemic.epistemic_kind;
+ epistemic_kind 
+----------------
+ MEASURED
+(1 row)
+
+SELECT 'inferred'::epistemic.epistemic_kind;      -- case-insensitive
+ epistemic_kind 
+----------------
+ INFERRED
+(1 row)
+
+SELECT 'Derived'::epistemic.epistemic_kind;
+ epistemic_kind 
+----------------
+ DERIVED
+(1 row)
+
+SELECT 'derived'::epistemic.epistemic_kind::text; -- round-trip
+  text   
+---------
+ DERIVED
+(1 row)
+
+SELECT 'MeAsUrEd'::epistemic.epistemic_kind::text;
+   text   
+----------
+ MEASURED
+(1 row)
+
+SELECT 'unknown'::epistemic.epistemic_kind;       -- SQLSTATE 22P02
+ERROR:  invalid epistemic_kind: "unknown"
+LINE 1: SELECT 'unknown'::epistemic.epistemic_kind;
+               ^
