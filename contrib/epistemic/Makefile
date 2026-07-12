@@ -40,7 +40,8 @@ include $(PGXS)
 # ------------------------------------------------------------------
 
 .PHONY: check-e2e check-e2e-recovery check-e2e-concurrency check-e2e-bypass \
-        check-e2e-crash check-e2e-tie
+        check-e2e-crash check-e2e-tie check-e2e-rc check-e2e-det \
+        check-e2e-dl
 
 check-e2e-recovery:
 	@echo "===> recovery.sh"
@@ -62,9 +63,22 @@ check-e2e-tie:
 	@echo "===> tie_concurrency.sh"
 	@bash $(srcdir)/scripts/tie_concurrency.sh
 
+check-e2e-rc:
+	@echo "===> rc_invariant.sh"
+	@bash $(srcdir)/scripts/rc_invariant.sh
+
+check-e2e-det:
+	@echo "===> tie_determinism.sh"
+	@bash $(srcdir)/scripts/tie_determinism.sh
+
+check-e2e-dl:
+	@echo "===> deadlock_detection.sh"
+	@bash $(srcdir)/scripts/deadlock_detection.sh
+
 check-e2e:
 	@set -e; \
 	rc_recovery=0; rc_concurrency=0; rc_bypass=0; rc_crash=0; rc_tie=0; \
+	rc_rc=0; rc_det=0; rc_dl=0; \
 	echo "===> recovery.sh"; \
 	bash $(srcdir)/scripts/recovery.sh || rc_recovery=$$?; \
 	echo "===> concurrency.sh"; \
@@ -75,14 +89,23 @@ check-e2e:
 	bash $(srcdir)/scripts/crash_atomicity.sh || rc_crash=$$?; \
 	echo "===> tie_concurrency.sh"; \
 	bash $(srcdir)/scripts/tie_concurrency.sh || rc_tie=$$?; \
-	echo "===> check-e2e summary: recovery=$$rc_recovery concurrency=$$rc_concurrency bypass=$$rc_bypass crash=$$rc_crash tie=$$rc_tie"; \
-	if [ $$rc_recovery -eq 0 ] && [ $$rc_concurrency -eq 0 ] && [ $$rc_bypass -eq 0 ] && [ $$rc_crash -eq 0 ] && [ $$rc_tie -eq 0 ]; then \
-	    echo "check-e2e: PASS"; exit 0; \
+	echo "===> rc_invariant.sh"; \
+	bash $(srcdir)/scripts/rc_invariant.sh || rc_rc=$$?; \
+	echo "===> tie_determinism.sh"; \
+	bash $(srcdir)/scripts/tie_determinism.sh || rc_det=$$?; \
+	echo "===> deadlock_detection.sh"; \
+	bash $(srcdir)/scripts/deadlock_detection.sh || rc_dl=$$?; \
+	echo "===> check-e2e summary: recovery=$$rc_recovery concurrency=$$rc_concurrency bypass=$$rc_bypass crash=$$rc_crash tie=$$rc_tie rc=$$rc_rc det=$$rc_det dl=$$rc_dl"; \
+	if [ $$rc_recovery -eq 0 ] && [ $$rc_concurrency -eq 0 ] && [ $$rc_bypass -eq 0 ] && [ $$rc_crash -eq 0 ] && [ $$rc_tie -eq 0 ] && [ $$rc_rc -eq 0 ] && [ $$rc_det -eq 0 ] && [ $$rc_dl -eq 0 ]; then \
+	    echo "check-e2e: PASS (8/8)"; exit 0; \
 	else \
 	    echo "check-e2e: FAIL"; \
 	    [ $$rc_recovery -ne 0 ]    && exit $$rc_recovery; \
 	    [ $$rc_concurrency -ne 0 ] && exit $$rc_concurrency; \
 	    [ $$rc_bypass -ne 0 ]      && exit $$rc_bypass; \
 	    [ $$rc_crash -ne 0 ]       && exit $$rc_crash; \
-	    exit $$rc_tie; \
+	    [ $$rc_tie -ne 0 ]         && exit $$rc_tie; \
+	    [ $$rc_rc -ne 0 ]          && exit $$rc_rc; \
+	    [ $$rc_det -ne 0 ]         && exit $$rc_det; \
+	    exit $$rc_dl; \
 	fi

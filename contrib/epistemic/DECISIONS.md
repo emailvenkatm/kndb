@@ -4,6 +4,146 @@ Short notes recording load-bearing design choices and, where useful, the
 audit that produced them. New entries go on top. Each entry is dated and
 identifies the code paths involved.
 
+## 2026-07-12, F6: per-slot advisory xact lock + content-hash tiebreak
+
+F4 documented the RC integrity leak (concurrent same-slot writers both
+commit, two live rows land) and the SR concurrent tie non-determinism
+(SIRead pivot-abort picks a survivor by commit order, not content). F6
+closes both edges of that envelope inside the AM's tuple_insert
+callback. Two mechanisms, one design.
+
+### A. Per-slot advisory xact lock
+
+`epistemic_tuple_insert_impl` now takes a `LOCKTAG_ADVISORY` lock with
+`(field1=MyDatabaseId, field2=entity_id, field3=hash_bytes(attribute),
+field4=2)` between the R1..R5 rule check and the `find_live_overlap`
+scan. Constructed inline via `SET_LOCKTAG_ADVISORY` (lock.h:271-277
+REL_18_STABLE) + `LockAcquire(&tag, ExclusiveLock, false, false)`
+(lock.h:555-558) — same tag/mode/scope as
+`pg_advisory_xact_lock_int4(int4, int4)` at
+src/backend/utils/adt/lockfuncs.c:826-837 REL_18_STABLE. Chose the
+inline construction over `DirectFunctionCall2` to save one fmgr hop
+and make the xact-scope explicit at the call site.
+
+`find_live_overlap`'s snapshot changed from `GetActiveSnapshot()` to
+`GetLatestSnapshot()` (snapmgr.c:353-376 REL_18_STABLE). Rationale:
+after the advisory lock unblocks, the statement's active MVCC snapshot
+was taken before the peer's COMMIT; only the refreshed
+`SecondarySnapshot` sees the just-committed row. Same fix applied in
+`epistemic_close_sys_time`'s `heap_fetch` — the incumbent's TID from
+find_live_overlap must be resolvable under the same snapshot.
+
+`scripts/rc_invariant.sh` runs 50 RC trials of two overlapping
+same-slot writers.
+
+  MODE=honest:
+    session1_wins=50 session2_wins=0 both_live=0 aborted_txn=0
+
+  MODE=broken (advisory-lock block patched to `if (0)`):
+    session1_wins=0 session2_wins=0 both_live=50 aborted_txn=0
+
+Both/50 in broken mode reproduces the pre-F6 RC leak exactly. The
+advisory lock is load-bearing.
+
+Collision caveat. The lock key is `(entity_id, hash_bytes(attribute))`,
+a 64-bit tag with birthday-limited collisions at ~2^32 attribute
+strings. A collision serialises two unrelated slots' writes; that is
+a benign perf issue (correctness holds because `find_live_overlap`
+still filters by full entity+attribute equality), not a correctness
+bug. In practice `attribute` is a small controlled vocabulary and
+collisions are rare.
+
+### B. Content-hash tiebreak on true precedence tie
+
+`epistemic_precedence_cmp` still returns
+`NEW_WINS/CONTRADICTED_SAME_RANK` on `(kind, specificity, confidence)`
+equality — that keeps the pure function testable in isolation
+(sql/precedence.sql). `epistemic_tuple_insert_impl` now detects that
+specific outcome and computes `hash_bytes` (common/hashfn.h:23
+REL_18_STABLE) over a length-prefixed serialisation of
+`(entity_id, attribute, value, valid_lower_secs, valid_upper_secs)`
+for both incumbent and new row. Lower hash wins; higher hash flips
+`cmp.outcome` to `NEW_LOSES` and the row is refused with the
+existing `epistemic precedence: NEW_LOSES` error. On a perfect
+32-bit collision on different content (birthday-limited at ~2^16
+same-slot writes), the fallback is the pre-F6 `NEW_WINS` — not a
+correctness violation for the "at most one live row per slot"
+invariant, only a deterministic-choice-of-survivor gap at that
+probability.
+
+`scripts/tie_determinism.sh` runs 50 RC trials each in two orderings
+(session1 starts first, then session2 starts first) with rows
+identical on `(kind, specificity, confidence)` but differing on
+`value` ("A_lo" vs "Z_hi").
+
+  MODE=honest:
+    s1first: A=0  Z=50 both=0
+    s2first: A=0  Z=50 both=0
+    -> content-deterministic: same value wins under both orders.
+
+  MODE=broken (tiebreak guard patched to `if (0)`):
+    s1first: A=0  Z=50 both=0
+    s2first: A=50 Z=0  both=0
+    -> commit-order-dependent: second-to-arrive wins.
+
+That before/after asymmetry is the load-bearing proof. The specific
+value that wins is content-hash-determined, not chosen; here it
+happens to be Z_hi because `hash_bytes(...Z_hi...) <
+hash_bytes(...A_lo...)`. hash_bytes has no ordering guarantee across
+PG versions, but for a given build the winner is stable.
+
+### C. Deadlock story
+
+The advisory lock is per-row (taken inside per-row `tuple_insert`). A
+multi-row INSERT that touches slots (X, Y) in one session and (Y, X)
+in a concurrent session can deadlock on the advisory locks: sess1
+holds lock(X) and waits on lock(Y); sess2 holds lock(Y) and waits on
+lock(X).
+
+Chose (b): accept the deadlock possibility, rely on PG's built-in
+deadlock detector at src/backend/storage/lmgr/deadlock.c
+(DeadLockCheck, called from lock manager after `deadlock_timeout`).
+Rationale: (a) sorted `multi_insert` helps only bulk paths sharing a
+BulkInsertState; the per-statement race across sessions still
+deadlocks. (b) the detector already exists and is one of PG's
+best-tested subsystems.
+
+`scripts/deadlock_detection.sh` runs 20 trials with
+`deadlock_timeout = 1s` and a 15s wall-clock cap per trial. Result:
+20/20 trials resolved with exactly one session aborted (SQLSTATE
+40P01, `deadlock detected`); 0 hangs. The lock detector is
+load-bearing here.
+
+### Test suite
+
+installcheck: 6/6 (unchanged).
+check-e2e:    8/8 (added rc_invariant.sh, tie_determinism.sh,
+              deadlock_detection.sh; kept tie_concurrency.sh as the
+              historical F4 baseline — its post-F6 numbers now read
+              `RC s1=50 both=0 abort=0 rule=50` and
+              `SR s1=50 both=0 abort=0 rule=50`, which is precisely
+              the RC-leak-closed / SR-content-deterministic outcome).
+
+### Files touched
+
+  * src/epistemic_am.c
+      - added advisory-lock block after rule check (`if (have_key)`
+        branch)
+      - `find_live_overlap`: `GetActiveSnapshot()` -> `GetLatestSnapshot()`,
+        added `found_value_out` output parameter
+      - `epistemic_close_sys_time`: `GetActiveSnapshot()` ->
+        `GetLatestSnapshot()` for the heap_fetch
+      - added `epistemic_content_hash` and the NEW_WINS+CONTRADICTED
+        tiebreak block in `epistemic_tuple_insert_impl`
+      - new headers: common/hashfn.h, miscadmin.h, storage/lmgr.h,
+        storage/lock.h
+  * scripts/rc_invariant.sh          new
+  * scripts/tie_determinism.sh       new
+  * scripts/deadlock_detection.sh    new
+  * Makefile                          new check-e2e-rc / check-e2e-det /
+                                      check-e2e-dl targets; aggregate
+                                      runs 8 scripts
+
 ## 2026-07-12, F4: eviction atomicity is PG's, tie survival is order-dependent
 
 Two audits. Neither finds an epistemic-specific mechanism; both name

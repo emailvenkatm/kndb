@@ -41,10 +41,30 @@ by rule = EP_RULE_NONE, rebuilt, all four fact_native assertions in
 bypass.sh flip from OK to FAIL. That is the adversarial control. See
 DECISIONS.md (F2).
 
-Everything else in the wrapper — WAL annotation, precedence eviction,
-audit, sys_time close — is either delegated to heap for durability or
-exists for downstream consumers. It is not what the bypass claim
-rides on.
+The single-live-row-per-slot claim rides on two mechanisms landed in
+F6, both inside epistemic_tuple_insert_impl:
+
+  * per-slot advisory xact lock (LOCKTAG_ADVISORY, key1=entity_id,
+    key2=hash_bytes(attribute)) taken between the rule check and the
+    overlap scan. scripts/rc_invariant.sh flips it off, rebuilds, and
+    the RC leak (both writers commit, two live rows land) returns on
+    every trial. See DECISIONS.md (F6.A).
+  * GetLatestSnapshot in find_live_overlap and epistemic_close_sys_time
+    so the scan and the incumbent-fetch see the peer that committed
+    while we waited on the advisory lock. Without this the "eviction
+    could not fetch incumbent tuple" ERROR fires and RC integrity
+    still leaks.
+  * content-hash tiebreak in the tuple_insert path: on a
+    (kind, specificity, confidence) tie we hash
+    (entity_id, attribute, value, valid_lower, valid_upper) with
+    hash_bytes and let lower-hash win. scripts/tie_determinism.sh
+    flips that block off, rebuilds, and the survivor becomes
+    commit-order-dependent instead of content-deterministic. See
+    DECISIONS.md (F6.B).
+
+Everything else in the wrapper — WAL annotation, audit, sys_time
+close — is either delegated to heap for durability or exists for
+downstream consumers. It is not what the bypass claim rides on.
 
 
 What delegates to heap
@@ -77,27 +97,37 @@ Correctness envelope
 --------------------
 
 The "at most one live row per (entity_id, attribute) slot" invariant
-that sql/am_eviction.sql asserts holds under SERIALIZABLE isolation
-on a serial-arrival path. It does NOT hold under READ COMMITTED and
-concurrent same-slot writers: each session's find_live_overlap
-seqscan uses its own snapshot and cannot see the other session's
-uncommitted insert; both hit the empty-overlap branch, both
-heap_insert, both commit, two live rows land. This is not resolved
-by the epistemic rules and is not a bug in the rules — it is a
-consequence of MVCC visibility under weaker isolation. See
-DECISIONS.md (F4, section B) for the 50-trial transcript.
+that sql/am_eviction.sql asserts holds under READ COMMITTED and
+SERIALIZABLE with concurrent same-slot writers, as of F6.
 
-Under SERIALIZABLE and two overlapping same-slot writers, one
-session aborts with SQLSTATE 40001; the survivor is whichever
-transaction PG did not choose to pivot-abort, which is
-commit-order-dependent, not content-dependent. The tie policy
-(EP_REASON_CONTRADICTED_SAME_RANK -> NEW_WINS) is exercised only on
-the serial path within a single session, where it is deterministic
-given a fixed arrival order.
+Under READ COMMITTED, the per-slot advisory xact lock taken in
+epistemic_tuple_insert_impl serialises the writers on their shared
+(entity_id, hash_bytes(attribute)) tag; the loser's find_live_overlap
+runs against GetLatestSnapshot so it sees the winner's just-committed
+row. scripts/rc_invariant.sh runs 50 trials and reports both=0,
+aborted=0, exactly one live row per trial. With the advisory lock
+patched out, both=50 — the leak returns. See DECISIONS.md (F6.A).
 
-Fix 6 attempts to close both edges of this envelope
-(RC integrity leak; SR concurrent survivor non-determinism). See
-DECISIONS.md when it lands.
+On a true precedence tie (equal kind, specificity, confidence) the
+survivor is chosen by hash_bytes over the stable content columns
+(entity_id, attribute, value, valid_lower, valid_upper). Lower hash
+wins. scripts/tie_determinism.sh runs 50 RC trials in each of two
+commit orders and reports the same value winning under both orders.
+With the tiebreak patched out, the survivor flips with commit order.
+See DECISIONS.md (F6.B).
+
+Under SERIALIZABLE the advisory lock still serialises the writers,
+and one of them additionally hits the SIRead relation lock inherited
+from heapam's seqscan; scripts/concurrency.sh confirms one 40001
+abort is still emitted (native>=1, trigger>=1). The paper's actual
+differentiator is bypass survival, exercised in scripts/bypass.sh.
+
+The advisory lock is per-row, so two multi-row INSERT statements that
+touch two slots in opposite orders can deadlock on the advisory
+locks. PG's built-in deadlock detector (deadlock.c) resolves within
+`deadlock_timeout = 1s`. scripts/deadlock_detection.sh stages 20
+deadlock races and confirms 20/20 resolve with SQLSTATE 40P01, 0
+hangs. See DECISIONS.md (F6.C).
 
 
 Threat model
@@ -125,7 +155,7 @@ Assumes pg_config on PATH resolves to a PG 18 install with headers.
     make install
     make installcheck                              # 6 regression suites
     PROVE_TESTS='t/*.pl' make prove_installcheck   # TAP (empty today)
-    make check-e2e                                 # 5 e2e scripts
+    make check-e2e                                 # 8 e2e scripts
 
 The extension requires shared_preload_libraries = 'epistemic' so the
 custom rmgr is registered before recovery. The e2e scripts and TAP
@@ -135,13 +165,18 @@ postgresql.conf and restart.
 
 check-e2e runs, on isolated clusters spun up in /tmp:
 
-    scripts/recovery.sh          crash + recovery, 110 rows round-trip
-    scripts/concurrency.sh       fair SSI check on native and trigger
-    scripts/bypass.sh            trigger-disable + replica-role bypass
-    scripts/crash_atomicity.sh   25 trials, eviction atomicity
-    scripts/tie_concurrency.sh   50 trials each at RC and SR, tie probe
+    scripts/recovery.sh            crash + recovery, 110 rows round-trip
+    scripts/concurrency.sh         fair SSI check on native and trigger
+    scripts/bypass.sh              trigger-disable + replica-role bypass
+    scripts/crash_atomicity.sh     25 trials, eviction atomicity
+    scripts/tie_concurrency.sh     50 trials each at RC and SR, tie probe
+                                   (historical F4 baseline; post-F6
+                                    reports RC/SR both=0 rule=50)
+    scripts/rc_invariant.sh        F6: advisory lock closes RC leak
+    scripts/tie_determinism.sh     F6: content hash breaks the tie
+    scripts/deadlock_detection.sh  F6: deadlock detector resolves
 
-Baseline counts after F4: installcheck 6/6, check-e2e 5/5.
+Baseline counts after F6: installcheck 6/6, check-e2e 8/8.
 
 
 Layout
@@ -160,8 +195,8 @@ Layout
       epistemic_type.c         epistemic_kind C I/O
       epistemic_rules.c        R1..R5 + precedence cmp
     sql/  expected/            6 regression suites
-    scripts/                   5 end-to-end shell tests
+    scripts/                   8 end-to-end shell tests
     t/                         TAP harness (empty)
     epistemic--1.0.sql         extension SQL
     epistemic.control          extension control
-    DECISIONS.md               F1..F4 engineering audits
+    DECISIONS.md               F1..F6 engineering audits
