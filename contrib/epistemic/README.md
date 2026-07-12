@@ -2,8 +2,11 @@
 
 Native C implementation of KNDB epistemic typing for PostgreSQL 18.4.
 Proof-of-concept sufficient to answer "isn't this just a schema template
-with triggers?" — no; the enforcement lives in the storage AM, the WAL
-resource manager, and the SSI predicate-lock path.
+with triggers?" — no; the enforcement lives in the storage AM's
+`tuple_insert` callback, which no user-space trigger control can bypass.
+The custom WAL resource manager is an annotation channel, not part of
+the enforcement story; heapam owns durability. See DECISIONS.md (F3
+audit) for the reasoning.
 
 ## Layout
 
@@ -38,16 +41,37 @@ tests via the `PostgreSQL::Test::Cluster` framework.
 
 ## Scope
 
-Frozen for the PoC: the 8-byte `EpistemicPrefix` layout, the three WAL
-record types (INSERT, EVICT, AUDIT), and the reason-code numbering.
+Frozen for the PoC: the 8-byte `EpistemicPrefix` layout, one WAL
+annotation record type (INSERT), and the reason-code numbering.
 Out of scope: vacuum semantics beyond delegated-to-heap, parallel
 scan, TOAST, logical replication.
+
+The custom rmgr (id 128) is an annotation channel only. After each
+row is inserted, the AM writes an `XLOG_EPISTEMIC_INSERT` record
+naming `(rlocator, offnum, kind, specificity, confidence)`. The
+record carries no tuple bytes and registers no buffer; heap's own
+`XLOG_HEAP_INSERT` (heapam.c:2209-2231 in REL_18_STABLE) already
+carries the full row, and `heap_xlog_insert`
+(heapam_xlog.c:417-503) reconstructs it at redo. The epistemic
+record has no downstream consumer today: rm_decode is NULL so
+logical decoding skips it (decode.c:115-117), and PG 18's standalone
+`pg_waldump` does not load custom rmgrs so it renders the record as
+`custom128 UNKNOWN (10) rmid: 128`. The record exists so
+`sql/wal.sql`'s rm_id=128 probe reflects a real emitted record and
+so the annotation channel is available for a future logical-decoding
+consumer. Its removal makes no observable difference to recovery
+under `wal_consistency_checking=all` — the F3 audit transcript in
+DECISIONS.md is the proof.
 
 ## Success metrics
 
 1. `make check` green (six regression suites).
 2. `scripts/recovery.sh` round-trips a crash under
    `wal_consistency_checking = all` with no PANIC and exact row count.
+   Recovery here is provided by heapam's WAL, not by the epistemic
+   rmgr; the script is retained as an end-to-end sanity check that
+   the AM's write path doesn't corrupt pages, and as evidence that
+   the custom rmgr coexists cleanly with `wal_consistency_checking`.
 3. `scripts/concurrency.sh` runs a two-session overlap under
    SERIALIZABLE against both fact_native and a scan-equipped
    fact_trigger; both paths abort at least one session. This is
@@ -76,6 +100,6 @@ The write-path claim depends on `epistemic_check_rules` being called
 from inside `epistemic_tuple_insert_impl` before the heap insert. If
 that call is removed, `scripts/bypass.sh` flips 4/4 fact_native
 assertions from OK to FAIL — the R3-violating row lands on both
-tables. Everything else in the AM (WAL markers, precedence eviction,
+tables. Everything else in the AM (WAL annotation, precedence eviction,
 audit) is either delegated to heapam or exists for downstream
 consumers, and is not what the bypass claim rides on.

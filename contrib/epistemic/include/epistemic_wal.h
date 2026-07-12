@@ -1,11 +1,28 @@
 /*
  * epistemic_wal.h
  *
- * WAL record types and resource manager for the epistemic AM.
- * Frozen: record layout MUST remain binary-stable so redo can decode
- * XLOG records written by earlier revisions of the extension.
+ * Custom WAL resource manager for the epistemic AM. Registered at
+ * RM_EPISTEMIC_ID (== RM_EXPERIMENTAL_ID = 128) from _PG_init.
  *
- * Owner: Agent B (WAL resource manager).
+ * Scope after F3 audit: this rmgr is an ANNOTATION CHANNEL, not a
+ * durability channel. Heap's own XLOG_HEAP_INSERT record carries the
+ * full tuple body (including ep_kind, ep_specificity, ep_confidence,
+ * sources — every user column) via XLogRegisterBufData; heap's WAL
+ * plus heap_xlog_insert already recovers every byte of the row. The
+ * epistemic record adds nothing to recovery. See DECISIONS.md (F3
+ * entry) for the disable-and-retest proof and the PG 18 source
+ * citations (heapam.c:2222-2226 in REL_18_STABLE for the register
+ * calls, heapam_xlog.c:482-503 for the redo path).
+ *
+ * The rmgr is registered so that (a) pg_get_wal_resource_managers()
+ * reports id 128 as 'epistemic' (verified by sql/wal.sql), and (b) the
+ * annotation channel is reserved for a future consumer. rm_decode is
+ * NULL, so logical decoding (decode.c:LogicalDecodingProcessRecord
+ * skips records with a null rm_decode at lines 115-117) does not
+ * surface the record. PG 18's standalone pg_waldump does not load
+ * custom rmgrs, so external decoding is unavailable today; rm_desc is
+ * reached only via in-process wal_debug tracing. No downstream
+ * consumer exists.
  */
 #ifndef EPISTEMIC_WAL_H
 #define EPISTEMIC_WAL_H
@@ -15,7 +32,6 @@
 #include "access/xlogreader.h"
 #include "access/xlog_internal.h"
 #include "access/rmgr.h"
-#include "storage/buf.h"
 #include "storage/itemptr.h"
 #include "storage/relfilelocator.h"
 #include "utils/rel.h"
@@ -24,65 +40,34 @@
 
 /*
  * Rmgr id and record info bytes. RM_EPISTEMIC_ID is fixed at
- * RM_EXPERIMENTAL_ID (128) for the PoC; a production extension would
- * request a stable id via the PostgreSQL rmgr registry.
+ * RM_EXPERIMENTAL_ID (128) for the PoC.
  */
 #define RM_EPISTEMIC_ID			RM_EXPERIMENTAL_ID
 
 #define XLOG_EPISTEMIC_INSERT	0x10
-#define XLOG_EPISTEMIC_EVICT	0x20
-#define XLOG_EPISTEMIC_AUDIT	0x30
 
 /*
- * xl_epistemic_insert -- payload for a native tuple insert.
- * Immediately followed by the full tuple bytes.
+ * xl_epistemic_insert -- annotation marker written after a heap insert.
+ * Carries only the logical location (relation + offset) and the
+ * epistemic prefix. tuple_len is always 0; no buffer reference is
+ * registered. The record does NOT participate in redo of the row
+ * itself; heap's XLOG_HEAP_INSERT does that.
  */
 typedef struct xl_epistemic_insert
 {
 	RelFileLocator	rlocator;
 	OffsetNumber	offnum;
-	uint16			tuple_len;
+	uint16			tuple_len;			/* always 0 for the annotation marker */
 	EpistemicPrefix	prefix;
-	/* xl_epistemic_insert is followed by tuple_len bytes of tuple data */
 } xl_epistemic_insert;
 
 #define SizeOfEpistemicInsert	(offsetof(xl_epistemic_insert, prefix) + sizeof(EpistemicPrefix))
 
 /*
- * xl_epistemic_evict -- lattice evicted an incumbent live tuple by
- * closing its sys_time upper bound. The evicted row itself is not
- * rewritten; we record enough to redo the sys_time close.
- */
-typedef struct xl_epistemic_evict
-{
-	RelFileLocator	rlocator;
-	ItemPointerData	loser_tid;
-	ItemPointerData	winner_tid;
-	TimestampTz		close_ts;			/* clock_timestamp() value used */
-	uint8			reason;				/* EpistemicPrecedenceReason */
-	uint8			padding[7];
-} xl_epistemic_evict;
-
-#define SizeOfEpistemicEvict	sizeof(xl_epistemic_evict)
-
-/*
- * xl_epistemic_audit -- one row appended to epistemic.evicted_fact.
- * Followed by the JSONB payload.
- */
-typedef struct xl_epistemic_audit
-{
-	RelFileLocator	rlocator;
-	OffsetNumber	offnum;
-	uint16			payload_len;
-	uint8			reason;
-	uint8			padding[3];
-} xl_epistemic_audit;
-
-#define SizeOfEpistemicAudit	(offsetof(xl_epistemic_audit, padding))
-
-/*
- * Rmgr registration entry point. Called from _PG_init. Idempotent
- * against repeated LOAD via the extension mechanism.
+ * Rmgr registration entry point. Called from _PG_init. Requires that
+ * the extension be loaded via shared_preload_libraries so
+ * RegisterCustomRmgr's process_shared_preload_libraries_in_progress
+ * check (rmgr.c:RegisterCustomRmgr) succeeds.
  */
 extern void epistemic_rmgr_register(void);
 
@@ -93,31 +78,14 @@ extern const char *epistemic_rm_identify(uint8 info);
 extern void epistemic_rm_mask(char *pagedata, BlockNumber blkno);
 
 /*
- * Convenience helpers used by epistemic_am.c to build records.
- * Return the XLogRecPtr of the written record so callers can use it
- * for XLogFlush() or LSN accounting.
+ * The only surviving logger. Writes an annotation record naming the
+ * new tuple's (rlocator, offnum) and its EpistemicPrefix. Does NOT
+ * carry tuple bytes and does NOT register a buffer; the row's
+ * durability lives in heap's WAL. Return value is the XLogRecPtr of
+ * the emitted record.
  */
-extern XLogRecPtr epistemic_wal_log_insert(Relation rel,
-										   Buffer buffer,
-										   ItemPointer tid,
-										   const EpistemicPrefix *prefix,
-										   const char *tuple,
-										   uint16 tuple_len);
-
 extern XLogRecPtr epistemic_wal_log_insert_marker(Relation rel,
 												  ItemPointer tid,
 												  const EpistemicPrefix *prefix);
-
-extern XLogRecPtr epistemic_wal_log_evict(Relation rel,
-										  ItemPointer loser,
-										  ItemPointer winner,
-										  TimestampTz close_ts,
-										  uint8 reason);
-
-extern XLogRecPtr epistemic_wal_log_audit(Relation audit_rel,
-										  ItemPointer new_tid,
-										  uint8 reason,
-										  const char *payload,
-										  uint16 payload_len);
 
 #endif   /* EPISTEMIC_WAL_H */

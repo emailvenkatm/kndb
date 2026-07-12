@@ -1,4 +1,11 @@
--- wal.sql: verify the custom WAL resource manager is registered.
+-- wal.sql: verify the epistemic custom WAL resource manager is registered.
+--
+-- Rmgr id 128 is registered at extension load (_PG_init) so that
+-- pg_get_wal_resource_managers() reports it and pg_waldump can decode
+-- the annotation records the AM emits after each insert. The rmgr is
+-- an annotation channel, not a durability channel: heap's own WAL
+-- carries every row byte. See DECISIONS.md (F3 audit) for the
+-- disable-and-retest proof.
 CREATE EXTENSION IF NOT EXISTS epistemic;
 NOTICE:  extension "epistemic" already exists, skipping
 SELECT rm_name FROM pg_get_wal_resource_managers() WHERE rm_id = 128;

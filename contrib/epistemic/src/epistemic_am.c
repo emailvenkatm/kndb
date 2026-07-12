@@ -3,8 +3,11 @@
  *
  * Table access method handler for the epistemic AM. Wraps heapam's
  * TableAmRoutine: all callbacks delegate to heap except tuple_insert,
- * which runs the write-time rules and precedence lattice, emits the
- * epistemic WAL markers, and hands the row to heap for storage.
+ * which runs the write-time rules and precedence lattice, hands the
+ * row to heap for storage, and emits one epistemic annotation WAL
+ * record on rmgr 128 for external consumers (pg_waldump). Durability
+ * of the row is provided entirely by heap. See DECISIONS.md (F3
+ * audit) for the disable-and-retest proof.
  *
  * Serializable-isolation predicate locking is delegated to heapam:
  * find_live_overlap() runs a seqscan through heap_beginscan (which
@@ -361,28 +364,38 @@ epistemic_tuple_insert_impl(Relation rel, TupleTableSlot *slot,
 	/*
 	 * Step 7: post-insert epistemic eviction bookkeeping.
 	 *   a) audit the incumbent to epistemic.evicted_fact, tagging the
-	 *      winner's ctid (now known).
-	 *   b) physically close the incumbent's sys_time upper bound.
-	 *   c) emit the EVICT WAL marker (heap's own update record provides
-	 *      durability for the sys_time close; this record carries the
-	 *      epistemic reason for audit / logical decoding).
+	 *      winner's ctid (now known). Durable via the SPI-driven
+	 *      heap_insert into the audit relation (heap's own WAL).
+	 *   b) physically close the incumbent's sys_time upper bound via
+	 *      simple_heap_update. Durable via heap_update's XLOG_HEAP_UPDATE.
 	 * valid_time is preserved throughout (bitemporal semantics).
+	 * No epistemic WAL record is written on the eviction path: the F3
+	 * audit showed that a dedicated EVICT rmgr record added nothing to
+	 * recovery (heap's two records above already carry every byte).
 	 */
 	if (have_eviction)
 	{
 		epistemic_audit_evicted(rel, &loser_tid, &slot->tts_tid, cmp.reason);
 		epistemic_close_sys_time(rel, &loser_tid);
-		(void) epistemic_wal_log_evict(rel, &loser_tid, &slot->tts_tid,
-									   GetCurrentTimestamp(),
-									   (uint8) cmp.reason);
 		CommandCounterIncrement();
 	}
 
 	/*
-	 * Step 8: post-insert epistemic INSERT marker. heap's tuple_insert
-	 * wrote XLOG_HEAP_INSERT for durability; this XLOG_EPISTEMIC_INSERT
-	 * carries the epistemic prefix (kind/specificity/confidence) alongside
-	 * for audit / logical decoding. tuple_len = 0, no block ref registered.
+	 * Step 8: emit the epistemic INSERT annotation record. Durability of
+	 * the row itself is provided entirely by heap's XLOG_HEAP_INSERT
+	 * (heapam.c:2209-2231 in REL_18_STABLE registers the full tuple body
+	 * via XLogRegisterBufData and heap_xlog_insert reconstructs it at
+	 * redo). The epistemic record carries only the (kind, specificity,
+	 * confidence) prefix as a named annotation on rmgr 128; rm_decode is
+	 * NULL, so logical decoding (decode.c:115-117) skips it, and PG 18's
+	 * standalone pg_waldump cannot load custom rmgrs, so it renders our
+	 * records as "custom128 UNKNOWN (10)" — the rm_desc callback is only
+	 * reached in-process, via wal_debug tracing on this same postmaster.
+	 * The record is kept for two reasons: (1) it exercises the registered
+	 * rmgr so sql/wal.sql's rm_id=128 probe reflects a real emitted
+	 * record; (2) it reserves the annotation channel for a future logical
+	 * decoding consumer (which will require also wiring rm_decode). See
+	 * DECISIONS.md (F3 audit) for the disable-and-retest proof.
 	 */
 	if (have_new_prefix && ItemPointerIsValid(&slot->tts_tid))
 		(void) epistemic_wal_log_insert_marker(rel, &slot->tts_tid, &new_prefix);

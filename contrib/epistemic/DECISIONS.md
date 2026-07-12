@@ -4,6 +4,95 @@ Short notes recording load-bearing design choices and, where useful, the
 audit that produced them. New entries go on top. Each entry is dated and
 identifies the code paths involved.
 
+## 2026-07-12, F3: rmgr 128 is an annotation channel, not a durability channel
+
+Heap's XLOG_HEAP_INSERT already carries every byte of every column
+we care about. In PG 18 REL_18_STABLE, heap_insert at
+src/backend/access/heap/heapam.c:2222-2226 does
+    XLogRegisterBufData(0, &xlhdr, SizeOfHeapHeader);
+    XLogRegisterBufData(0, (char *) heaptup->t_data + SizeofHeapTupleHeader,
+                        heaptup->t_len - SizeofHeapTupleHeader);
+so the entire user tuple — ep_kind, ep_specificity, ep_confidence,
+sources, valid_time, sys_time, all of it — is in heap's WAL record.
+heap_xlog_insert at heapam_xlog.c:417-503 reconstructs the page via
+XLogRecGetBlockData + PageAddItem. Our rows are plain heap tuples;
+there is no epistemic-only state to persist. There is no scenario
+where the epistemic record adds durability that heap doesn't
+already provide, and I did not manufacture one.
+
+Grep of every .c file for the four loggers declared in epistemic_wal.h:
+  - epistemic_wal_log_insert        0 callers (dead)
+  - epistemic_wal_log_insert_marker 1 caller  (epistemic_am.c:388)
+  - epistemic_wal_log_evict         1 caller  (epistemic_am.c:375)
+  - epistemic_wal_log_audit         0 callers (dead)
+
+Empirical test 1 (marker): comment out the marker call in
+epistemic_am.c step 8, rebuild, make install, run scripts/recovery.sh
+on a fresh cluster with wal_consistency_checking = all.
+  pre-crash lsn=0/1BBA568 count=110
+  post-recovery row count=110
+  PASS: recovery round-tripped 110 rows
+No PANIC, no "inconsistent page", no non-benign FATAL. The marker is
+not load-bearing for durability.
+
+Empirical test 2 (evict): comment out the evict call in step 7 as
+well. Recovery.sh only exercises non-overlapping inserts, so evict
+never fires there; add an eviction-inducing crash test (50 INFERRED
+rows, checkpoint, 50 evicting MEASURED inserts post-checkpoint,
+immediate stop, restart).
+  pre-crash:    total=100 live=50 closed=50 audit=50
+  post-recovery: total=100 live=50 closed=50 audit=50
+  PANIC/inconsistent hits: 0
+  PASS: eviction state fully recovered by heap WAL alone
+The three real state changes on the eviction path — winner INSERT,
+loser sys_time UPDATE, audit-row INSERT into epistemic.evicted_fact —
+are each already covered by heap's own XLOG_HEAP_INSERT and
+XLOG_HEAP_UPDATE. The EVICT record adds nothing.
+
+Empirical test 3 (both off): with both loggers disabled — i.e., the
+extension writes ZERO records on rmgr 128 — recovery.sh still passes
+110/110 rows and the eviction crash test still passes 100 rows with
+50 closed and 50 audit rows. That is the strongest form of the
+proof: the rmgr is inert for durability.
+
+Chose demotion (b). Changes:
+
+  * Deleted the dead loggers `epistemic_wal_log_insert` (full tuple
+    logger, was never called) and `epistemic_wal_log_audit` (was
+    never called).
+  * Deleted the evict logger `epistemic_wal_log_evict` and its call
+    site in epistemic_am.c (proved decorative above; evict path's
+    durability lives in heap_update's WAL and heap_insert's WAL for
+    the audit relation).
+  * Deleted the record structs `xl_epistemic_evict` and
+    `xl_epistemic_audit` and their info bytes XLOG_EPISTEMIC_EVICT
+    and XLOG_EPISTEMIC_AUDIT.
+  * Kept `epistemic_wal_log_insert_marker` and XLOG_EPISTEMIC_INSERT
+    as the sole annotation channel. It writes tuple_len=0 and no
+    buffer reference; recovery.sh with it removed proves it is not
+    load-bearing. It is retained so sql/wal.sql's rm_id=128 probe
+    reflects a real emitted record and so a future logical decoding
+    consumer has a named channel to hook.
+
+Reservations. rm_decode is NULL, so logical decoding
+(src/backend/replication/logical/decode.c:115-117) skips epistemic
+records. PG 18's stock pg_waldump does not load custom rmgrs, so it
+renders the record as "custom128 UNKNOWN (10) rmid: 128" — verified
+locally on a WAL segment containing an emitted marker. In-server
+wal_debug is the only path today that reaches rm_desc. That is the
+honest scope of the "annotation channel" phrase.
+
+README and code comments that said the rmgr provides durability, or
+implied a working logical-decoding consumer, have been rewritten to
+match the demoted role. sql/wal.sql keeps its rm_id=128 probe; only
+the header comment was updated.
+
+Attacker model, unchanged from F2. The AM-in-storage differentiator
+still holds. This audit narrows what durability the paper can claim
+comes from the extension: durability comes from heap. What the AM
+provides is the write-time enforcement point and, as a byproduct, a
+named annotation channel that is currently unused.
+
 ## 2026-07-12, F2: the differentiator is bypass survival, not SSI
 
 F1 established that both fact_native and a scan-equipped
