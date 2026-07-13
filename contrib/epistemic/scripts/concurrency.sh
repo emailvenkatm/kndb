@@ -206,9 +206,22 @@ SQL
     wait "${pid1}" || true
     wait "${pid2}" || true
 
+    # An "abort" here means one session was rejected in a form the other
+    # sees as loss-of-write. Two rejection paths are equivalent for that
+    # purpose:
+    #   40001  — SSI/serialization_failure from CheckForSerializableConflictIn
+    #   NEW_LOSES — the AM's precedence-tie rejection (F8 xmin tiebreak;
+    #               fires before heap_insert and, on the native path,
+    #               before SSI's rw-antidependency check has anything to
+    #               abort). Under F8 the identical-prefix race lands
+    #               here every time: the F6 advisory lock serialises the
+    #               writers, the second-to-arrive sees the first as
+    #               committed via GetLatestSnapshot, and the xmin
+    #               tiebreak rejects it with NEW_LOSES before SSI gets
+    #               a chance to fire 40001.
     local hits1 hits2
-    hits1=$(grep -c -E 'could not serialize|40001|serialization_failure' "${out1}" || true)
-    hits2=$(grep -c -E 'could not serialize|40001|serialization_failure' "${out2}" || true)
+    hits1=$(grep -c -E 'could not serialize|40001|serialization_failure|NEW_LOSES' "${out1}" || true)
+    hits2=$(grep -c -E 'could not serialize|40001|serialization_failure|NEW_LOSES' "${out2}" || true)
 
     local rows
     rows=$("${PSQL}" ${PSQL_CONN} -Atc "SELECT count(*) FROM ${table} WHERE entity_id=1 AND attribute='bp';")
@@ -238,23 +251,26 @@ TRIGGER_ROWS=$(printf '%s' "${TRIGGER_LINE}" | sed -E 's/.* rows=([0-9]+).*/\1/'
 TRIGGER_TOTAL=$(( TRIGGER_H1 + TRIGGER_H2 ))
 
 log "----- results -----"
-log "fact_native  : 40001_sessions=${NATIVE_TOTAL}  rows_post=${NATIVE_ROWS}"
-log "fact_trigger : 40001_sessions=${TRIGGER_TOTAL} rows_post=${TRIGGER_ROWS}"
+log "fact_native  : aborted_sessions=${NATIVE_TOTAL}  rows_post=${NATIVE_ROWS} (40001 or NEW_LOSES)"
+log "fact_trigger : aborted_sessions=${TRIGGER_TOTAL} rows_post=${TRIGGER_ROWS} (40001)"
 
 # What this actually demonstrates: both AM.tuple_insert and the BEFORE
-# INSERT trigger delegate their scan to heapam, so both acquire the
-# SIRead lock heapam issues at heap_beginscan / heap_insert. Both
-# abort. This is standard PG serializable behavior — not evidence of
-# anything epistemic-specific. The engine-level difference the paper
-# rests on is exercised in scripts/bypass.sh.
+# INSERT trigger reject at least one of two concurrent identical-prefix
+# writers, so a single live row survives. The trigger path relies on
+# heapam's SIRead lock (heap_beginscan / heap_insert) to raise 40001;
+# the native path additionally has F8's xmin-tiebreak, which under the
+# advisory-lock-serialised race reaches NEW_LOSES before SSI has a
+# rw-antidependency to abort. Both are valid loss-of-write signals.
+# The engine-level differentiator the paper rests on is exercised in
+# scripts/bypass.sh.
 if [ "${NATIVE_TOTAL}" -ge 1 ] && [ "${TRIGGER_TOTAL}" -ge 1 ]; then
-    log "PASS: both paths aborted under fair conditions (native>=1, trigger>=1). No epistemic-specific SSI claim implied."
+    log "PASS: both paths rejected one session under fair conditions (native>=1, trigger>=1). No epistemic-specific SSI claim implied."
     trap - EXIT
     cleanup
     exit 0
 fi
 
-log "UNEXPECTED: native=${NATIVE_TOTAL} trigger=${TRIGGER_TOTAL}. Under fair conditions both should abort at least one session."
+log "UNEXPECTED: native=${NATIVE_TOTAL} trigger=${TRIGGER_TOTAL}. Under fair conditions both should reject at least one session."
 trap - EXIT
 cleanup
 exit 1

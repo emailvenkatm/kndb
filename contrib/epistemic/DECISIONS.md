@@ -4,6 +4,193 @@ Short notes recording load-bearing design choices and, where useful, the
 audit that produced them. New entries go on top. Each entry is dated and
 identifies the code paths involved.
 
+## 2026-07-12, F8: xmin (first-committer-wins) tiebreak; accept batch ceiling
+
+F7 landed two adversarial findings against F6.
+
+  * T1 (batch-size ceiling). One transaction can insert ~15,000
+    distinct-slot rows at the PG default `max_locks_per_transaction=64`
+    before it trips ERRCODE_OUT_OF_MEMORY 53200 from LockAcquire's
+    SetupLockInTable path (src/backend/storage/lmgr/lock.c:1076-1082
+    REL_18_STABLE). The shared lock hashtable is sized by
+    NLOCKENTS() = max_locks_per_xact * (MaxBackends + max_prepared_xacts)
+    at lock.c:56-57 REL_18_STABLE. Each per-slot advisory xact lock
+    consumes one entry; batch inserts accumulate them until COMMIT.
+    scripts/lock_exhaustion.sh sweeps N and confirms the failure at
+    N in the 14000-15000 range at the default GUC; scaling to
+    `max_locks_per_transaction=1024` moves the ceiling to ~250k,
+    linear as the formula predicts (scripts/lock_exhaustion_linearity.sh).
+    The failure is a graceful ERROR, not a crash; both the transaction
+    and the target relation remain consistent (no partial writes commit;
+    the whole INSERT rolls back).
+
+  * T2 (content-hash grindability). F6 broke true precedence ties by
+    hash_bytes over content columns and let lower-hash win. hash_bytes
+    (src/common/hashfn.h:23 REL_18_STABLE) is deterministic per build
+    and observable by any role with SELECT on the target. An attacker
+    with SELECT+INSERT grinds `value` bytes until it finds one whose
+    hash beats the incumbent. scripts/hash_grind.sh (F7's original)
+    reported 30/30 wins with a mean of ~15 attempts to first success —
+    the mechanism was ornamental.
+
+### T1-a decision (accepted, documented)
+
+Accept the ~15k ceiling as a design tradeoff. The alternatives were
+(T1-b) an EXCLUDE constraint via btree_gist, (T1-c) a switch to
+per-slot advisory *session* locks (releases at end of session, not
+end of transaction — orthogonal correctness issue), and (T1-d) drop
+the advisory lock and re-open the RC leak. The user chose T1-a: the
+lock table is what makes RC-safe eviction possible; multi-slot batches
+that need higher throughput can raise `max_locks_per_transaction`
+before running. README and the correctness envelope now name the
+threshold and its linearity. Files: none touched; F7's characterization
+scripts (scripts/lock_exhaustion.sh, lock_exhaustion_scan.sh,
+lock_exhaustion_deep.sh, lock_exhaustion_linearity.sh) remain in
+place unchanged.
+
+### T2-a decision + implementation (swap to xmin)
+
+Replaced the caller-side content-hash tiebreak in
+`epistemic_tuple_insert_impl` with an xmin (first-committer-wins)
+comparison. Mechanism:
+
+  1. `find_live_overlap` now returns the incumbent's raw xmin via
+     `HeapTupleHeaderGetRawXmin` (access/htup_details.h:322-326
+     REL_18_STABLE) — a static inline that reads
+     `t_choice.t_heap.t_xmin` from the scan slot's HeapTuple. We
+     fetch the HeapTuple with `ExecFetchSlotHeapTuple(slot, false, &sf)`
+     (executor/tuptable.h:343 REL_18_STABLE, materialize=false to
+     avoid a copy).
+  2. On a true (kind, specificity, confidence) tie, the caller reads
+     the current backend's xid via `GetCurrentTransactionId`
+     (src/backend/access/transam/xact.c:454 REL_18_STABLE) — assigns
+     one if not yet set.
+  3. Compares via `TransactionIdPrecedes`
+     (src/backend/access/transam/transam.c:279-292 REL_18_STABLE),
+     which handles xid-wraparound via a modulo-2^32 comparison for
+     two normal xids and a straight unsigned comparison when either
+     side is a permanent xid. If `incumbent_xmin < new_xid` (the
+     normal case), the tie flips to `EP_CMP_NEW_LOSES` and
+     `epistemic precedence: NEW_LOSES (reason=contradicted_same_rank)`
+     rejects the incoming row.
+  4. Defensive branch (incumbent_xmin follows or equals new_xid, or
+     is invalid): keep NEW_WINS unchanged. Under the current design
+     this branch is unreachable — the F6 advisory lock guarantees
+     the incumbent is committed by the time `find_live_overlap`
+     sees it, and its xmin was stamped by heap_insert
+     (heapam.c:2288 HeapTupleHeaderSetXmin, called from heap_insert
+     at heapam.c:2083 with `xid = GetCurrentTransactionId()`) at
+     an earlier moment in time. Kept as an explicit no-op so a
+     future refactor that inverts commit order does not silently
+     flip the tie policy.
+  5. Deleted `epistemic_content_hash` and its caller-side hash-compare
+     block. Deleted the `found_value_out` output parameter of
+     `find_live_overlap` and its caller-side plumbing (incumbent_value
+     cstring is no longer read from the scan tuple).
+
+Xids are reassigned on pg_dump / pg_restore. Restore loads data
+via COPY FROM (src/backend/commands/copyfrom.c:1427 REL_18_STABLE),
+which routes through `table_tuple_insert` → `heap_insert` →
+`GetCurrentTransactionId`, stamping every reloaded row with a fresh
+xid. So the specific survivor of a historical tie is NOT stable
+across dump/restore. The invariant that IS stable is
+"exactly one live row per slot" (sql/am_eviction.sql). Comment in
+src/epistemic_am.c above the compare states this explicitly.
+
+### Adversarial proofs
+
+`scripts/tie_determinism.sh` (rewritten for F8 semantics; F6's
+content-deterministic assertion no longer applies):
+
+  MODE=honest, 50 trials × 2 orders:
+    s1first: A_lo_wins=50 Z_hi_wins=0  both=0 rule_err=50
+    s2first: A_lo_wins=0  Z_hi_wins=50 both=0 rule_err=50
+    → first-committer-wins under both orders.
+
+  MODE=broken (xmin tiebreak guard patched to `if (0)`):
+    s1first: A_lo_wins=0  Z_hi_wins=50 both=0 rule_err=0
+    s2first: A_lo_wins=50 Z_hi_wins=0  both=0 rule_err=0
+    → last-writer-wins; the mechanism the xmin tiebreak reverses.
+
+`scripts/hash_grind.sh` (rewritten to prove grind-resistance under
+F8; F7's baseline transcript of 30/30 attacker wins under F6 stands
+in the git history as the finding that motivated F8):
+
+  MODE=honest:
+    Step 2 numeric-suffix   : attacker wins 0/30
+    Step 3 whitespace-suffix: attacker wins 0/30
+    Step 4 distribution     : attacker wins 0/20000 across 100 trials
+                              × 200 attempts each
+
+  MODE=broken (same guard patched to `if (0)`):
+    Step 2 numeric-suffix   : attacker wins 30/30 (first attempt each)
+    Step 3 whitespace-suffix: attacker wins 30/30 (first attempt each)
+    Step 4 distribution     : attacker wins 30/30 (first attempt each)
+
+`scripts/rc_invariant.sh` unchanged post-swap:
+    session1_wins=50 session2_wins=0 both_live=0 aborted_txn=0
+    → the F6 advisory lock still closes the RC integrity leak; the
+      xmin swap is orthogonal to it.
+
+`scripts/concurrency.sh` no-op assertion tightened. Under F8 the
+fair concurrency race between identical-prefix writers reaches the
+tie branch and NEW_LOSES fires *before* SSI's rw-antidependency
+check has anything to abort. NEW_LOSES is now counted as a
+"session aborted" alongside 40001, since both are loss-of-write
+signals to the rejected session. Native path: 1 abort (via
+NEW_LOSES); trigger path: 1 abort (via 40001). Both engines still
+survive the fair race with a single live row.
+
+### What this changes semantically
+
+F6's content-hash tiebreak was content-deterministic: whichever
+`value` had the lower hash won the tie, regardless of commit order.
+F8's xmin tiebreak is start-order-dependent: whichever session
+committed first wins. Both are deterministic given a fixed workload.
+The tradeoff is:
+
+  * F6 gave up grind-resistance in exchange for content-determinism.
+    An attacker who controls `value` could win any tie.
+  * F8 gives up content-determinism (survivor differs by commit
+    order and does not survive dump/restore) in exchange for
+    grind-resistance (no attacker-controllable byte changes the
+    outcome).
+
+The user chose grind-resistance. Documented tradeoff.
+
+### Files touched
+
+  * src/epistemic_am.c
+      - deleted `epistemic_content_hash` (helper, ~24 lines)
+      - deleted `found_value_out` output parameter of
+        `find_live_overlap`; replaced with `found_xmin_out`
+        (TransactionId *). Populated via ExecFetchSlotHeapTuple +
+        HeapTupleHeaderGetRawXmin.
+      - replaced caller-side content-hash tiebreak with xmin
+        comparison via `TransactionIdPrecedes(incumbent_xmin,
+        GetCurrentTransactionId())`.
+  * scripts/hash_grind.sh — rewritten. Baseline: 0 wins across
+                            20000 grind attempts. Broken:
+                            attacker wins first attempt every trial.
+  * scripts/tie_determinism.sh — verdict text updated. Honest:
+                                 first-committer-wins under each
+                                 start order. Broken: last-writer-wins.
+  * scripts/concurrency.sh — the "aborted session" grep now
+                             recognises NEW_LOSES as well as 40001.
+                             Under F8 the native path lands on
+                             NEW_LOSES because the advisory lock
+                             serialises the writers before SSI
+                             has a chance to fire.
+  * README.md — F8 correctness envelope: batch-size ceiling documented
+                (T1-a), tie semantics documented (first-committer-wins
+                via xmin, pg_restore caveat noted).
+
+### Test suite
+
+installcheck: 6/6 unchanged.
+check-e2e:    8/8 (rc_invariant, tie_determinism, hash_grind under
+                   F8 semantics; the other five unchanged).
+
 ## 2026-07-12, F6: per-slot advisory xact lock + content-hash tiebreak
 
 F4 documented the RC integrity leak (concurrent same-slot writers both

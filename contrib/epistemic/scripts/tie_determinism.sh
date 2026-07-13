@@ -1,27 +1,59 @@
 #!/usr/bin/env bash
 #
-# scripts/tie_determinism.sh — F6 adversarial proof for the
-# content-hash tiebreak.
+# scripts/tie_determinism.sh — F8 adversarial proof for the xmin
+# (first-committer-wins) tiebreak.
 #
-# Two concurrent RC sessions insert overlapping same-slot rows with
-# IDENTICAL (kind, specificity, confidence) but DIFFERENT `value`.
-# Under the honest build the advisory lock serialises them so both
-# reach epistemic_precedence_cmp on the second-to-arrive; the true
-# tie (CONTRADICTED_SAME_RANK) is broken by hash_bytes over
-# (entity_id, attribute, value, valid_lower, valid_upper). Lower hash
-# wins.
+# History. F6 broke true precedence ties by hash_bytes over the content
+# columns and let lower-hash win. That was content-deterministic (same
+# content wins under any commit order) but attacker-grindable: the
+# attacker controls `value` and the server's hash is deterministic per
+# build (see F7 hash_grind.sh, ~30 attempts to find a winning value on
+# the mean). F8 swaps that mechanism for a server-controlled xmin
+# comparison in src/epistemic_am.c:
 #
-# Expectation (honest): winner is deterministic — same session wins
-# every trial, no commit-order dependence. Losing session raises
-# 'epistemic precedence: NEW_LOSES (reason=contradicted_same_rank)'.
+#   on a true (kind, specificity, confidence) tie,
+#   TransactionIdPrecedes(incumbent_xmin, current_xid) -> incumbent wins.
 #
-# Adversarial mode (TIE_DET_MODE=broken): patches out the
-# content-hash tiebreak so the tie branch reverts to unconditional
-# NEW_WINS. Under advisory-lock serialisation the "later" writer
-# always wins, so the survivor is now commit-order-dependent — with
-# a small 0.05s stagger session2 wins every trial (last-writer-wins).
-# Flip which session starts first and session1 wins. That
-# commit-order dependence is precisely what the tiebreak eliminates.
+# The AM reads the raw xmin from the HeapTupleHeader
+# (HeapTupleHeaderGetRawXmin, htup_details.h:322-326 REL_18_STABLE) and
+# gets the current xid via GetCurrentTransactionId (xact.c:454
+# REL_18_STABLE). TransactionIdPrecedes (transam.c:279-292 REL_18_STABLE)
+# handles xid-wraparound via a modulo-2^32 comparison. F6's advisory
+# lock guarantees the incumbent is committed before we see it, so
+# incumbent_xmin < new_xid on every race — the incumbent always wins.
+#
+# Semantics change. F6 was content-deterministic: the same value won
+# under both start orders. F8 is start-order-dependent: whichever
+# session commits first wins. Both are deterministic given a fixed
+# workload; the difference is what the workload can be. Under F6 an
+# attacker who controls content and can retry can win any tie by
+# grinding; under F8 no content the attacker can send changes the
+# outcome — only who committed first.
+#
+# Test shape:
+#   Two concurrent RC sessions insert overlapping same-slot rows with
+#   IDENTICAL (kind, specificity, confidence) but DIFFERENT `value`
+#   ("A_lo" from session1, "Z_hi" from session2). A 50ms stagger
+#   ensures the first-started session gets its xid first and commits
+#   first (both sessions sleep 300ms inside the txn to allow the second
+#   to block on the advisory lock; the F6 lock ensures the second
+#   observes the first's committed row on unblock).
+#
+# Expectation (honest, xmin tiebreak in place):
+#   s1first  -> A_lo wins every trial  (session1's xmin precedes session2's xid)
+#   s2first  -> Z_hi wins every trial  (session2's xmin precedes session1's xid)
+#
+# Adversarial mode (TIE_DET_MODE=broken): patches out the xmin tiebreak
+# so the tie branch reverts to unconditional NEW_WINS. Under advisory-lock
+# serialisation the second-to-arrive session always wins (last-writer-wins):
+#   s1first  -> Z_hi wins every trial
+#   s2first  -> A_lo wins every trial
+#
+# The flip in the honest column (A vs Z depending on which session
+# starts first) is the "first-committer-wins" property. The flip in
+# the broken column (last-writer-wins) is what we get when the
+# mechanism is off. Both are stable across trials; that stability is
+# the load-bearing observation.
 #
 # Bash 3.2 compatible.
 
@@ -53,9 +85,9 @@ RESTORE_NEEDED=0
 
 restore_source() {
     if [ "${RESTORE_NEEDED}" = "1" ]; then
-        log "restoring epistemic_am.c to F6 honest build"
+        log "restoring epistemic_am.c to F8 honest build"
         perl -i -0pe '
-            s{if \(0 /\* F6 BROKEN: tiebreak disabled \*/\)}
+            s{if \(0 /\* F8 BROKEN: xmin tiebreak disabled \*/\)}
              {if (cmp.outcome == EP_CMP_NEW_WINS &&\n\t\t\t\tcmp.reason == EP_REASON_CONTRADICTED_SAME_RANK)}sg
         ' "${AM}"
         (cd "${REPO}" && PATH="${PGBIN}:${PATH}" PG_CONFIG="${PG_CONFIG}" make -s >/dev/null 2>&1 && \
@@ -90,22 +122,22 @@ on_error() {
 trap on_error EXIT
 
 # ------------------------------------------------------------------
-# adversarial patch: disable the content-hash tiebreak
+# adversarial patch: disable the xmin tiebreak
 # ------------------------------------------------------------------
 if [ "${MODE}" = "broken" ]; then
-    log "patching epistemic_am.c: disabling content-hash tiebreak"
-    grep -q 'F6 BROKEN: tiebreak disabled' "${AM}" && \
+    log "patching epistemic_am.c: disabling xmin tiebreak"
+    grep -q 'F8 BROKEN: xmin tiebreak disabled' "${AM}" && \
         fail "epistemic_am.c already patched; refusing to run twice"
 
     perl -i -0pe '
         s{
             if\ \(cmp\.outcome\ ==\ EP_CMP_NEW_WINS\ &&\s*
                  cmp\.reason\ ==\ EP_REASON_CONTRADICTED_SAME_RANK\)
-        }{if (0 /* F6 BROKEN: tiebreak disabled */)}sx
+        }{if (0 /* F8 BROKEN: xmin tiebreak disabled */)}sx
     ' "${AM}"
     RESTORE_NEEDED=1
 
-    grep -q 'F6 BROKEN: tiebreak disabled' "${AM}" || \
+    grep -q 'F8 BROKEN: xmin tiebreak disabled' "${AM}" || \
         fail "patch did not apply (grep did not find the marker)"
 
     log "rebuilding + installing patched AM"
@@ -170,8 +202,7 @@ mkdir -p "${WORKDIR}"
 
 # ------------------------------------------------------------------
 # 2. one race: two concurrent RC inserts, IDENTICAL prefix, DIFFERENT
-#    value. Only value differs so the content hash is the only
-#    discriminator.
+#    value. Only value differs so the tie branch is reached.
 # ------------------------------------------------------------------
 run_race() {
     local first="$1"  # "s1first" or "s2first"
@@ -248,7 +279,7 @@ SQL
 }
 
 # ------------------------------------------------------------------
-# 3. loop, TRIALS trials with session1 starting first
+# 3. loop, TRIALS trials for each start order
 # ------------------------------------------------------------------
 run_suite() {
     local order="$1"
@@ -315,35 +346,28 @@ s2f_A=$(grep '^s2first' "${SUMMARY_FILE}" | sed -E 's/.*A=([0-9]+).*/\1/')
 s2f_Z=$(grep '^s2first' "${SUMMARY_FILE}" | sed -E 's/.*Z=([0-9]+).*/\1/')
 
 if [ "${MODE}" = "honest" ]; then
-    log "MODE=honest: expect content-deterministic survivor across BOTH orders"
-    # hash_bytes has no ordering guarantee, so we do not hardcode "A wins" or
-    # "Z wins" — we assert that the same value wins under both orders.
-    if [ "${s1f_A}" -eq "${TRIALS}" ] && [ "${s2f_A}" -eq "${TRIALS}" ]; then
-        WINNER='A_lo'
-    elif [ "${s1f_Z}" -eq "${TRIALS}" ] && [ "${s2f_Z}" -eq "${TRIALS}" ]; then
-        WINNER='Z_hi'
-    else
-        fail "survivor is not order-independent: s1first(A=${s1f_A} Z=${s1f_Z}) s2first(A=${s2f_A} Z=${s2f_Z})"
+    log "MODE=honest: expect first-committer-wins under both orders"
+    log "  s1first: session1's xmin precedes session2's xid -> A_lo wins"
+    log "  s2first: session2's xmin precedes session1's xid -> Z_hi wins"
+    if [ "${s1f_A}" -eq "${TRIALS}" ] && [ "${s2f_Z}" -eq "${TRIALS}" ]; then
+        log "PASS: xmin tiebreak = first-committer-wins under both orders"
+        trap - EXIT
+        cleanup
+        exit 0
     fi
-    log "PASS: content hash picks '${WINNER}' as survivor regardless of commit order"
-    trap - EXIT
-    cleanup
-    exit 0
+    fail "not first-committer-wins: s1first(A=${s1f_A} Z=${s1f_Z}) s2first(A=${s2f_A} Z=${s2f_Z})"
 fi
 
-log "MODE=broken: expect commit-order-dependent survivor"
-# with the tiebreak disabled, the second-committing session's row wins
-# (unconditional NEW_WINS on tie under advisory-lock serialisation).
-# s1first: session2 arrives second -> Z_hi wins
-# s2first: session1 arrives second -> A_lo wins
+log "MODE=broken: expect last-writer-wins under both orders"
+log "  without the tiebreak, second-to-arrive session's tie insert commits"
+log "  s1first: session2 arrives second -> Z_hi wins"
+log "  s2first: session1 arrives second -> A_lo wins"
 if [ "${s1f_Z}" -eq "${TRIALS}" ] && [ "${s2f_A}" -eq "${TRIALS}" ]; then
-    log "PASS: without tiebreak, survivor is commit-order-dependent"
-    log "      s1first->Z_hi wins (session2 arrives second)"
-    log "      s2first->A_lo wins (session1 arrives second)"
-    log "      that order-dependence is exactly what the tiebreak eliminates"
+    log "PASS: without tiebreak, survivor is last-writer-wins"
+    log "      that is exactly the property the xmin tiebreak reverses"
     trap - EXIT
     cleanup
     exit 0
 fi
 
-fail "broken mode did not reproduce order-dependence: s1first(A=${s1f_A} Z=${s1f_Z}) s2first(A=${s2f_A} Z=${s2f_Z})"
+fail "broken mode did not reproduce last-writer-wins: s1first(A=${s1f_A} Z=${s1f_Z}) s2first(A=${s2f_A} Z=${s2f_Z})"

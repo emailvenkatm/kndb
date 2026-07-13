@@ -91,10 +91,6 @@ static void epistemic_audit_evicted(Relation rel, ItemPointer loser_tid,
 									ItemPointer winner_tid,
 									EpistemicPrecedenceReason reason);
 static void epistemic_close_sys_time(Relation rel, ItemPointer loser_tid);
-static uint32 epistemic_content_hash(int32 entity_id, const char *attribute,
-									 const char *value,
-									 int64 valid_lower_secs,
-									 int64 valid_upper_secs);
 
 /*
  * TOAST tables for epistemic relations are plain heap. Otherwise the TOAST
@@ -240,55 +236,12 @@ sys_time_is_open(TupleTableSlot *slot)
 }
 
 /*
- * F6: content hash over the stable slot-identity columns for the tie
- * break in epistemic_tuple_insert_impl. Byte layout:
- *
- *   int32   entity_id
- *   int32   attribute_len
- *   uint8[] attribute
- *   int32   value_len
- *   uint8[] value
- *   int64   valid_lower_secs
- *   int64   valid_upper_secs
- *
- * hash_bytes is PG's stock 32-bit hash (common/hashfn.h:23 REL_18_STABLE).
- * The layout is chosen so an incumbent and a new-row race compute the
- * same hash on identical content and different hashes on different
- * `value` — even if attribute/value share prefixes. Length prefixes
- * disambiguate ("ab"+"c" vs "a"+"bc").
- */
-static uint32
-epistemic_content_hash(int32 entity_id, const char *attribute,
-					   const char *value,
-					   int64 valid_lower_secs, int64 valid_upper_secs)
-{
-	StringInfoData buf;
-	int32		alen = (int32) strlen(attribute);
-	int32		vlen = (int32) strlen(value);
-	uint32		h;
-
-	initStringInfo(&buf);
-	appendBinaryStringInfo(&buf, (const char *) &entity_id, sizeof(int32));
-	appendBinaryStringInfo(&buf, (const char *) &alen, sizeof(int32));
-	appendBinaryStringInfo(&buf, attribute, alen);
-	appendBinaryStringInfo(&buf, (const char *) &vlen, sizeof(int32));
-	appendBinaryStringInfo(&buf, value, vlen);
-	appendBinaryStringInfo(&buf, (const char *) &valid_lower_secs,
-						   sizeof(int64));
-	appendBinaryStringInfo(&buf, (const char *) &valid_upper_secs,
-						   sizeof(int64));
-	h = hash_bytes((const unsigned char *) buf.data, buf.len);
-	pfree(buf.data);
-	return h;
-}
-
-/*
  * Scan the relation for a live tuple that (a) has the same (entity_id,
  * attribute), (b) has an open sys_time upper bound, and (c) overlaps the
  * incoming valid_time. Uses the heapam scan callbacks directly to avoid
  * recursion. Returns true and fills *found_tid, *found_prefix, and (if
- * non-NULL) *found_value_out (palloc'd cstring copy of the incumbent's
- * value column, for the F6 content-hash tiebreak) on match.
+ * non-NULL) *found_xmin_out (the incumbent's raw xmin, for the F8
+ * first-committer-wins tiebreak) on match.
  *
  * Snapshot: GetLatestSnapshot() rather than GetActiveSnapshot(). Under
  * READ COMMITTED, after epistemic_tuple_insert_impl takes the per-slot
@@ -300,7 +253,7 @@ epistemic_content_hash(int32 entity_id, const char *attribute,
 static bool
 find_live_overlap(Relation rel, int32 want_entity, const char *want_attr,
 				  RangeType *want_valid, ItemPointer found_tid,
-				  EpistemicMeta *found_prefix, char **found_value_out)
+				  EpistemicMeta *found_prefix, TransactionId *found_xmin_out)
 {
 	const TableAmRoutine *heapam;
 	TableScanDesc scan;
@@ -359,16 +312,28 @@ find_live_overlap(Relation rel, int32 want_entity, const char *want_attr,
 		ItemPointerCopy(&scan_slot->tts_tid, found_tid);
 
 		/*
-		 * Capture the incumbent's value cstring for the F6 content-hash
-		 * tiebreak. NULL value -> empty string; the hash still discriminates
-		 * against a non-NULL new-row value.
+		 * F8: capture the incumbent's raw xmin for the first-committer-wins
+		 * tiebreak. HeapTupleHeaderGetRawXmin at htup_details.h:322-326
+		 * REL_18_STABLE reads t_choice.t_heap.t_xmin — the xid that
+		 * heap_insert stamped when the incumbent was originally written
+		 * (heapam.c:2288 HeapTupleHeaderSetXmin, called from heap_insert
+		 * at heapam.c:2083 with xid = GetCurrentTransactionId()).
+		 *
+		 * ExecFetchSlotHeapTuple with materialize=false gives us the
+		 * scan's live HeapTuple without copying (tuptable.h:343
+		 * REL_18_STABLE). The returned pointer is valid only while the
+		 * scan slot still holds this row; we read t_data->t_choice
+		 * inline and stash the TransactionId value, so lifetime is fine.
 		 */
-		if (found_value_out != NULL)
+		if (found_xmin_out != NULL)
 		{
-			d = slot_getattr(scan_slot, EP_ATTR_VALUE, &isnull);
-			*found_value_out = isnull
-				? pstrdup("")
-				: text_to_cstring(DatumGetTextPP(d));
+			HeapTuple	htup;
+			bool		should_free = false;
+
+			htup = ExecFetchSlotHeapTuple(scan_slot, false, &should_free);
+			*found_xmin_out = HeapTupleHeaderGetRawXmin(htup->t_data);
+			if (should_free)
+				heap_freetuple(htup);
 		}
 
 		found = true;
@@ -462,60 +427,69 @@ epistemic_tuple_insert_impl(Relation rel, TupleTableSlot *slot,
 	if (have_key && have_new_prefix)
 	{
 		EpistemicMeta incumbent;
-		char	   *incumbent_value = NULL;
+		TransactionId incumbent_xmin = InvalidTransactionId;
 
 		if (find_live_overlap(rel, entity_id, attribute, valid_time,
-							  &loser_tid, &incumbent, &incumbent_value))
+							  &loser_tid, &incumbent, &incumbent_xmin))
 		{
 			cmp = epistemic_precedence_cmp(&incumbent, &new_prefix);
 
 			/*
-			 * F6: content-deterministic tiebreak. epistemic_precedence_cmp
-			 * returns NEW_WINS/CONTRADICTED_SAME_RANK on true tie
-			 * (equal kind, specificity, confidence). Break the tie here
-			 * with hash_bytes over the stable content columns
-			 * (entity_id, attribute, value, valid_lower, valid_upper).
-			 * Lower hash wins. Both sides of the race compute the same
-			 * value for either candidate, so the survivor is
-			 * content-deterministic regardless of commit order.
+			 * F8: first-committer-wins tiebreak. epistemic_precedence_cmp
+			 * returns NEW_WINS/CONTRADICTED_SAME_RANK on a true tie
+			 * (equal kind, specificity, confidence). We break that tie by
+			 * comparing xids: the incumbent's raw xmin (stamped by
+			 * heap_insert at heapam.c:2288 HeapTupleHeaderSetXmin from
+			 * xid = GetCurrentTransactionId() at heapam.c:2083) against
+			 * the current backend's xid (xact.c:454 GetCurrentTransactionId,
+			 * REL_18_STABLE). TransactionIdPrecedes at transam.c:279-292
+			 * handles xid-wraparound via a modulo-2^32 comparison for two
+			 * normal xids and a straight unsigned comparison when either
+			 * side is a permanent xid (FrozenTransactionId etc).
 			 *
-			 * On a perfect 32-bit hash collision (different content, same
-			 * hash — birthday-limited at ~2^16 slot writes) the fallback
-			 * is NEW_WINS, matching pre-F6 semantics. Not a correctness
-			 * bug for the invariant we assert (single live row per slot);
-			 * only a deterministic-choice-of-survivor bug at that
-			 * probability.
+			 * Under the F6 advisory lock the incumbent is always committed
+			 * by the time find_live_overlap sees it (its writer released
+			 * the lock at COMMIT), and GetCurrentTransactionId assigns the
+			 * new row's xid on demand — so incumbent_xmin < new_xid on
+			 * every normal race and the incumbent wins the tie. The
+			 * defensive follows-branch keeps NEW_WINS in the pathological
+			 * case where an incumbent's xid somehow follows ours (can
+			 * happen with FrozenTransactionId as the "permanent" xmin
+			 * sentinel, which is logically -infinity; TransactionIdPrecedes
+			 * correctly reports incumbent_xmin < new_xid there too, so
+			 * "follows" is only reachable if the semantics are inverted
+			 * by callers not covered here).
+			 *
+			 * xids are reassigned on pg_dump / pg_restore (restore reloads
+			 * via COPY FROM at copyfrom.c:1427 which routes through
+			 * table_tuple_insert → heap_insert → GetCurrentTransactionId,
+			 * assigning a fresh xid to every reloaded row). So the
+			 * specific survivor of a historical tie is NOT stable across
+			 * dump/restore. What IS stable across dump/restore is the
+			 * "exactly one live row per slot" invariant that sql/am_eviction.sql
+			 * asserts.
 			 */
 			if (cmp.outcome == EP_CMP_NEW_WINS &&
 				cmp.reason == EP_REASON_CONTRADICTED_SAME_RANK)
 			{
-				const char *incum_val = incumbent_value != NULL
-					? incumbent_value : "";
-				const char *new_val;
-				bool		val_isnull;
-				Datum		vd;
-				uint32		h_incumbent;
-				uint32		h_new;
+				TransactionId new_xid = GetCurrentTransactionId();
 
-				vd = slot_getattr(slot, EP_ATTR_VALUE, &val_isnull);
-				new_val = val_isnull ? "" : text_to_cstring(DatumGetTextPP(vd));
-
-				h_incumbent = epistemic_content_hash(entity_id, attribute,
-													 incum_val,
-													 valid_lower_secs,
-													 valid_upper_secs);
-				h_new = epistemic_content_hash(entity_id, attribute,
-											   new_val,
-											   valid_lower_secs,
-											   valid_upper_secs);
-
-				if (h_new > h_incumbent)
+				if (TransactionIdIsValid(incumbent_xmin) &&
+					TransactionIdPrecedes(incumbent_xmin, new_xid))
 				{
+					/* incumbent committed first — it keeps the slot. */
 					cmp.outcome = EP_CMP_NEW_LOSES;
 					/* reason stays CONTRADICTED_SAME_RANK for audit label */
 				}
-				/* h_new < h_incumbent  : NEW_WINS stands */
-				/* h_new == h_incumbent : NEW_WINS stands (perfect collision) */
+				/*
+				 * Otherwise (incumbent_xmin follows or equals new_xid, or
+				 * is invalid): defensively keep NEW_WINS. In the current
+				 * design this branch is unreachable because the incumbent
+				 * is a committed row visible to GetLatestSnapshot before
+				 * the current xact even acquired its xid; kept as an
+				 * explicit no-op so a future refactor that inverts commit
+				 * order does not silently flip the tie policy.
+				 */
 			}
 
 			if (cmp.outcome == EP_CMP_NEW_LOSES)

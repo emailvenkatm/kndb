@@ -41,8 +41,8 @@ by rule = EP_RULE_NONE, rebuilt, all four fact_native assertions in
 bypass.sh flip from OK to FAIL. That is the adversarial control. See
 DECISIONS.md (F2).
 
-The single-live-row-per-slot claim rides on two mechanisms landed in
-F6, both inside epistemic_tuple_insert_impl:
+The single-live-row-per-slot claim rides on three mechanisms inside
+epistemic_tuple_insert_impl (F6 for the first two, F8 for the third):
 
   * per-slot advisory xact lock (LOCKTAG_ADVISORY, key1=entity_id,
     key2=hash_bytes(attribute)) taken between the rule check and the
@@ -54,13 +54,17 @@ F6, both inside epistemic_tuple_insert_impl:
     while we waited on the advisory lock. Without this the "eviction
     could not fetch incumbent tuple" ERROR fires and RC integrity
     still leaks.
-  * content-hash tiebreak in the tuple_insert path: on a
-    (kind, specificity, confidence) tie we hash
-    (entity_id, attribute, value, valid_lower, valid_upper) with
-    hash_bytes and let lower-hash win. scripts/tie_determinism.sh
-    flips that block off, rebuilds, and the survivor becomes
-    commit-order-dependent instead of content-deterministic. See
-    DECISIONS.md (F6.B).
+  * xmin (first-committer-wins) tiebreak in the tuple_insert path: on
+    a (kind, specificity, confidence) tie the AM reads the incumbent's
+    raw xmin from the HeapTupleHeader and compares against the current
+    backend's xid via TransactionIdPrecedes. Under the F6 advisory
+    lock the incumbent is committed before we see it, so its xmin
+    logically precedes our xid on every race and the incumbent keeps
+    the slot. scripts/hash_grind.sh flips the tiebreak off, rebuilds,
+    and an attacker with SELECT+INSERT immediately displaces the
+    incumbent on the first content grind attempt. Under the honest
+    build the attacker wins 0 of 20000 grind attempts. See DECISIONS.md
+    (F8).
 
 Everything else in the wrapper — WAL annotation, audit, sys_time
 close — is either delegated to heap for durability or exists for
@@ -109,18 +113,54 @@ aborted=0, exactly one live row per trial. With the advisory lock
 patched out, both=50 — the leak returns. See DECISIONS.md (F6.A).
 
 On a true precedence tie (equal kind, specificity, confidence) the
-survivor is chosen by hash_bytes over the stable content columns
-(entity_id, attribute, value, valid_lower, valid_upper). Lower hash
-wins. scripts/tie_determinism.sh runs 50 RC trials in each of two
-commit orders and reports the same value winning under both orders.
-With the tiebreak patched out, the survivor flips with commit order.
-See DECISIONS.md (F6.B).
+survivor is decided by xmin (first-committer-wins), server-controlled
+and not attacker-grindable. The AM reads the incumbent's raw xmin
+via HeapTupleHeaderGetRawXmin (access/htup_details.h:322-326
+REL_18_STABLE) and fetches the current backend's xid via
+GetCurrentTransactionId (backend/access/transam/xact.c:454
+REL_18_STABLE). TransactionIdPrecedes
+(backend/access/transam/transam.c:279-292 REL_18_STABLE) handles
+xid-wraparound. Under the advisory lock the incumbent is committed
+before we scan it, so incumbent_xmin < new_xid on every race — the
+incumbent wins. scripts/tie_determinism.sh runs 50 RC trials in each
+of two commit orders: with s1 starting first, A_lo (s1) wins every
+trial; with s2 starting first, Z_hi (s2) wins every trial. That
+flip is first-committer-wins. With the tiebreak patched out the
+survivor flips to last-writer-wins (s1first→Z_hi 50/50, s2first→A_lo
+50/50). scripts/hash_grind.sh confirms an attacker with SELECT+INSERT
+wins 0 of 20000 content-grind attempts under the honest build; with
+the tiebreak patched out the attacker wins on the first attempt of
+every trial. See DECISIONS.md (F8).
+
+Caveat: xids are reassigned on pg_dump / pg_restore (restore reloads
+rows via COPY FROM at src/backend/commands/copyfrom.c:1427 REL_18_STABLE,
+which calls table_tuple_insert → heap_insert →
+GetCurrentTransactionId). The specific survivor of a historical tie
+is NOT stable across dump/restore. What IS stable is the
+"exactly one live row per slot" invariant that sql/am_eviction.sql
+asserts.
 
 Under SERIALIZABLE the advisory lock still serialises the writers,
 and one of them additionally hits the SIRead relation lock inherited
-from heapam's seqscan; scripts/concurrency.sh confirms one 40001
-abort is still emitted (native>=1, trigger>=1). The paper's actual
-differentiator is bypass survival, exercised in scripts/bypass.sh.
+from heapam's seqscan or the F8 xmin-tiebreak's NEW_LOSES on
+identical-prefix rows. scripts/concurrency.sh confirms one aborted
+session per race (native>=1, trigger>=1), where an "abort" is
+either 40001 (SSI) or NEW_LOSES (AM precedence tiebreak) — both are
+loss-of-write signals. The paper's actual differentiator is bypass
+survival, exercised in scripts/bypass.sh.
+
+Batch-size ceiling. The advisory lock is per-row (taken inside
+per-row tuple_insert) and lives in the per-transaction fastpath lock
+table (backend/storage/lmgr/lock.c). At the PG default
+`max_locks_per_transaction = 64`, a single transaction that inserts
+into ~15,000 distinct slots hits `ERROR 53200: out of shared memory`
+with the hint to raise `max_locks_per_transaction`. Scales linearly
+with the GUC. Larger batches require operators to raise the setting.
+This is an accepted design tradeoff (T1-a in DECISIONS.md F8); the
+F7 characterization scripts (`scripts/lock_exhaustion.sh`,
+`lock_exhaustion_scan.sh`, `lock_exhaustion_deep.sh`,
+`lock_exhaustion_linearity.sh`) document the threshold and its
+linearity.
 
 The advisory lock is per-row, so two multi-row INSERT statements that
 touch two slots in opposite orders can deadlock on the advisory
@@ -199,4 +239,4 @@ Layout
     t/                         TAP harness (empty)
     epistemic--1.0.sql         extension SQL
     epistemic.control          extension control
-    DECISIONS.md               F1..F6 engineering audits
+    DECISIONS.md               F1..F8 engineering audits
