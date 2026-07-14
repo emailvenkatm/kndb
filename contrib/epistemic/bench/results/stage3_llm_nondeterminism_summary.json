@@ -1,0 +1,1930 @@
+{
+  "per_conflict": [
+    {
+      "attribute": "a4",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_0"
+        ],
+        "spec": 86,
+        "value": "nvXonpSX0pR7uJuITWV8FNNNZzfIrQe77r0qlpdO"
+      },
+      "conflict_idx": 0,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 91,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "aye8N5cz7f3e1zd4oFepc0xUGLiim40TVK1Z0KO9"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 2916
+    },
+    {
+      "attribute": "a3",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_2"
+        ],
+        "spec": 240,
+        "value": "ULajb9BQ67m8hOYCVRvKwLIg4ITM8WLbM5o2yuFf"
+      },
+      "conflict_idx": 1,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "UxZHMC6155UgCBTDk46atunV6YIsCi5EJzyR05bR"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 3
+    },
+    {
+      "attribute": "a4",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "sources": null,
+        "spec": 128,
+        "value": "xD35OqWyVTU27NhgkE5VeKHKZuzPJd2VHVBlhEE0"
+      },
+      "conflict_idx": 2,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "incumbent_wins",
+      "incumbent": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "spec": 244,
+        "value": "zQmwXXZXsUd75fWMINSeYeo9YgToWfa5zovBJ98L"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 4
+    },
+    {
+      "attribute": "a0",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.36553141818129764,
+        "kind": "INFERRED",
+        "sources": [
+          "src_6"
+        ],
+        "spec": 237,
+        "value": "XcFdX4VfePoQkUFtunHluC0FAy9zyUkBOogDpvwJ"
+      },
+      "conflict_idx": 3,
+      "correct_vs_lattice_out_of_replays": 0,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "ZEcwcMPgGEMV8YQaeBSfdEMxwMBxsHn74C8So0zV"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 0
+    },
+    {
+      "attribute": "a31",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.5959467728636492,
+        "kind": "INFERRED",
+        "sources": [
+          "src_6"
+        ],
+        "spec": 36,
+        "value": "2FFjlrbYNBDo1rm586A96zJP7KUbhLbU9NyLmu3f"
+      },
+      "conflict_idx": 4,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 2832,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "FC3jHpBPInSwNZnZbjGo90zqUQhBjJANT5NqGH0V"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 90655
+    },
+    {
+      "attribute": "a0",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_9"
+        ],
+        "spec": 76,
+        "value": "0JPOdLLVNj4UnGxb3GG4hn0rIXLIDTaqSx5JsxDP"
+      },
+      "conflict_idx": 5,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "incumbent_wins",
+      "incumbent": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "spec": 210,
+        "value": "XhUvMCg4dj9aN7dw0ju99YHg3faGKcY1ASAfFeV6"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 0
+    },
+    {
+      "attribute": "a24",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_0"
+        ],
+        "spec": 108,
+        "value": "ZQECmgGHGgEcTDlLQnRYS6eaq1gFNIML59uJQQF8"
+      },
+      "conflict_idx": 6,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 1022,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "j4F2cXernKjmdV0Lls0OBOffyp1KDPwFOzpX7iHu"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 32728
+    },
+    {
+      "attribute": "a23",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_4"
+        ],
+        "spec": 106,
+        "value": "HxKJLQ0qkTe3QN2tbhCGzI4mlWnAb3dgOp0Vs0h4"
+      },
+      "conflict_idx": 7,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "QPKyOpb0RVfgt5s8CXg3LJQZv23tQOiQv1xuJDo1"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 23
+    },
+    {
+      "attribute": "a20",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.8519856482978831,
+        "kind": "INFERRED",
+        "sources": [
+          "src_0"
+        ],
+        "spec": 225,
+        "value": "1X2BFQ4ZMFKq1MG7EvTkQeGWerLho4ZiOIUeaR3U"
+      },
+      "conflict_idx": 8,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 89,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "WLrmtBXhK69WHR4ZBjRGVem3DqnyY67ErxYAP026"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 2868
+    },
+    {
+      "attribute": "a2",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.7927793008884669,
+        "kind": "INFERRED",
+        "sources": [
+          "src_9"
+        ],
+        "spec": 52,
+        "value": "OxfcC5wTdOYEvmOMphkDD7LRLxcsLTgDN0k50nOV"
+      },
+      "conflict_idx": 9,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "incumbent_wins",
+      "incumbent": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "spec": 243,
+        "value": "TpME9JD7cJfCW6si9U2KdMVJQttttbxxjZ03Nncc"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 2
+    },
+    {
+      "attribute": "a1",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_7"
+        ],
+        "spec": 6,
+        "value": "TpaIK0fJ3XYiWRL9pSDaIZBaOBUtoDfOwcIlTy3U"
+      },
+      "conflict_idx": 10,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 261,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "F9cf1oFEl2WdhqURKlU59rGLcYENZJv7r6KmwKd3"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 8353
+    },
+    {
+      "attribute": "a20",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "sources": null,
+        "spec": 128,
+        "value": "uXjRSTJFP2QjhEO7hzTeeUzx4BGGBIDrFdZZgEm8"
+      },
+      "conflict_idx": 11,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 26,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "C8y90UfRBQQWWGWlMD5OJeuoHF9GJYHzHbFijc4u"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 852
+    },
+    {
+      "attribute": "a6",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_1"
+        ],
+        "spec": 21,
+        "value": "HrhiJjrgusdryjpy1rm87knI3cOxSUmuc0tyN1tw"
+      },
+      "conflict_idx": 12,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 29,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "Av9kZILD0EgSUrJxXhJ1A5RcQ7U2Ic75yLvkawFN"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 934
+    },
+    {
+      "attribute": "a16",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "sources": null,
+        "spec": 243,
+        "value": "V77uOHQoJfjGSr6jZG7HTA0sGQfAfERBPYwNanlz"
+      },
+      "conflict_idx": 13,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 553,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "iVbFVsfPxWpMtxxzbxLzXSO4IJZvoUVTwhKuMmQw"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 17712
+    },
+    {
+      "attribute": "a22",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.1930836421750286,
+        "kind": "INFERRED",
+        "sources": [
+          "src_4"
+        ],
+        "spec": 151,
+        "value": "y5AzzJzM7yRRu18FFjjeHtnMuz6cFSFI3h3cphpQ"
+      },
+      "conflict_idx": 14,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 68,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "shLvScd20rvcbTUgFoDYObSxxijCvjCSX0lyxSt5"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 2198
+    },
+    {
+      "attribute": "a25",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_4"
+        ],
+        "spec": 131,
+        "value": "eipMeQ9YFLX4FZw4OrnTPFLXdiGe6IjCTLOBWCPC"
+      },
+      "conflict_idx": 15,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 2,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "RSNf2tusJ3qBSwjM4GZiFOn77y579fUGUr8mBMcq"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 89
+    },
+    {
+      "attribute": "a0",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_8"
+        ],
+        "spec": 139,
+        "value": "7b3H1ZV5U91psqNR5cKBhi8ml11z13FvmnaB5qS5"
+      },
+      "conflict_idx": 16,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "incumbent_wins",
+      "incumbent": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "spec": 213,
+        "value": "tM0EgKo7pM5y0agto4vmFWY4h3vzCWT1Uwmh98W8"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 0
+    },
+    {
+      "attribute": "a12",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "sources": null,
+        "spec": 19,
+        "value": "TFrmBbTaUsIsltwbb44KrKaMEQo9JKlb6mehn9WW"
+      },
+      "conflict_idx": 17,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 477,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "EafTLt6o22c1HN2kxcBXkj9UKWWa8G5e5opD4Dw3"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 15276
+    },
+    {
+      "attribute": "a5",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.5265783254374843,
+        "kind": "INFERRED",
+        "sources": [
+          "src_2"
+        ],
+        "spec": 36,
+        "value": "bBIQlcJ7af2a2HFlquQwPeUR9YJHB6zBTruwNQH9"
+      },
+      "conflict_idx": 18,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 6,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "QA68M0pdD1H4ZUspxPQjHHDifMaSk3JARlIq3I3Y"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 197
+    },
+    {
+      "attribute": "a0",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.16859063733701718,
+        "kind": "INFERRED",
+        "sources": [
+          "src_8"
+        ],
+        "spec": 30,
+        "value": "7D7QEXYtpQb08ubxWVgzVQNgQSfnnt1ch1ved1dz"
+      },
+      "conflict_idx": 19,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 2,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "incumbent_wins",
+      "incumbent": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "spec": 249,
+        "value": "yuifMlu9yBpew4nYqmJDYTTM3TH7LKhFKSTA08H0"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 64
+    },
+    {
+      "attribute": "a15",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "sources": null,
+        "spec": 195,
+        "value": "ewjU2fWPN4Gop3iBveX3UBbLP2mqJsbtFRGqBDI6"
+      },
+      "conflict_idx": 20,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 5,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "LlHSb0UZkqYwXt05NKNIAA0ZXkyEyzKJ0YNECKrP"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 175
+    },
+    {
+      "attribute": "a4",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.9109849850301497,
+        "kind": "INFERRED",
+        "sources": [
+          "src_6"
+        ],
+        "spec": 116,
+        "value": "JFVn0ocb7ZqObVGAsBPakUEYJXY4OD32r5vyayCf"
+      },
+      "conflict_idx": 21,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 3,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "WtAcWyaNUXFcedSp6nLMlA7RnfHZD3rNXNlbQMrA"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 100
+    },
+    {
+      "attribute": "a21",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "sources": null,
+        "spec": 162,
+        "value": "JLcwvOQ0DRQNIhadu504gVPK7E8pf12ZotTdDlfj"
+      },
+      "conflict_idx": 22,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 1967,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "xBTSEdBwGEqH7otjj6PNVTziGleJj2JrtKIVHjtn"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 62965
+    },
+    {
+      "attribute": "a4",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "sources": null,
+        "spec": 36,
+        "value": "ZWcDCimSJEHUXsg6xr7XHoYEHuK7DWtGdSxBvXOK"
+      },
+      "conflict_idx": 23,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 626,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "Pc83NCkb3PcGJsXA7MTEGlNfYyOtS0vNi272DmGV"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 20036
+    },
+    {
+      "attribute": "a7",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_7"
+        ],
+        "spec": 157,
+        "value": "DJNhE6lc0EOQ32YtEgCc1Qau20jsqjm3bUlYoCed"
+      },
+      "conflict_idx": 24,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "incumbent_wins",
+      "incumbent": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "spec": 190,
+        "value": "ISKU1xzxrmeDBfoHcaKACj1piF0lXpTf3DTEHUEK"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 7
+    },
+    {
+      "attribute": "a4",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_8"
+        ],
+        "spec": 82,
+        "value": "KmaE1Ydv5BYSfLixIISQFiMn2k6mZpxHRdDwaXJ4"
+      },
+      "conflict_idx": 25,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "incumbent_wins",
+      "incumbent": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "spec": 244,
+        "value": "zQmwXXZXsUd75fWMINSeYeo9YgToWfa5zovBJ98L"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 4
+    },
+    {
+      "attribute": "a2",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_1"
+        ],
+        "spec": 247,
+        "value": "WfxpqGt2XdN1ZvmnUTMgvf1QUO7TBhJCAxCqAxtj"
+      },
+      "conflict_idx": 26,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "incumbent_wins",
+      "incumbent": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "spec": 243,
+        "value": "TpME9JD7cJfCW6si9U2KdMVJQttttbxxjZ03Nncc"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 2
+    },
+    {
+      "attribute": "a2",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_7"
+        ],
+        "spec": 117,
+        "value": "FBobOGKk54lWIW3wxokOTDb1BqXe68404PCw9JdU"
+      },
+      "conflict_idx": 27,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "incumbent_wins",
+      "incumbent": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "spec": 243,
+        "value": "TpME9JD7cJfCW6si9U2KdMVJQttttbxxjZ03Nncc"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 2
+    },
+    {
+      "attribute": "a25",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.6373803524856969,
+        "kind": "INFERRED",
+        "sources": [
+          "src_0"
+        ],
+        "spec": 145,
+        "value": "uDuQSTDjQL389SZLlWoMbsAJhJgJKUKriFft4KsJ"
+      },
+      "conflict_idx": 28,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 4,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "GvhTbDiYuKdCjxQseY0opnRmBdkE4yMJc3xBaQxa"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 153
+    },
+    {
+      "attribute": "a13",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "sources": null,
+        "spec": 246,
+        "value": "otNi7of7aki4cLSJiU5VJh8Zyr24mj7IdV5j4OSx"
+      },
+      "conflict_idx": 29,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 1,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "FiDbkNeJ5druFBL5YVZETmIXlJfF1KIiTDDP8Hdo"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 45
+    },
+    {
+      "attribute": "a13",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.9436737092085009,
+        "kind": "INFERRED",
+        "sources": [
+          "src_0"
+        ],
+        "spec": 94,
+        "value": "B9T0lPRykP7dI0BlO4cxva1Jd4a6ubpO2ezB0wEU"
+      },
+      "conflict_idx": 30,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 1,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "incumbent_wins",
+      "incumbent": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "spec": 246,
+        "value": "otNi7of7aki4cLSJiU5VJh8Zyr24mj7IdV5j4OSx"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 45
+    },
+    {
+      "attribute": "a27",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "sources": null,
+        "spec": 59,
+        "value": "6cHMOY11ZtIZOyOIrQ4fbamMCx722fiEZllJCDZx"
+      },
+      "conflict_idx": 31,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 224,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "Aj5bfPul2UvJY1amx9R1ZwXNama1XxqCOpZ0Wxe8"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 7195
+    },
+    {
+      "attribute": "a6",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.1335964880320949,
+        "kind": "INFERRED",
+        "sources": [
+          "src_4"
+        ],
+        "spec": 78,
+        "value": "x6nAcdsllPtUkHwhpmR3laGB3u3c80CcQf9kiIYw"
+      },
+      "conflict_idx": 32,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "incumbent_wins",
+      "incumbent": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "spec": 213,
+        "value": "VpfPIkv2FVvn8683ynEUFTErFcYwalekp1cxTyow"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 6
+    },
+    {
+      "attribute": "a4",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "sources": null,
+        "spec": 124,
+        "value": "QRF02FB0CCshz1K1YgFPAu6FK6o7LI0yNdx50Kwa"
+      },
+      "conflict_idx": 33,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 2812,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "4AlWoXlecJ4Jv1vQBAxCouInOjhzVLPV3eqmtj0b"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 89988
+    },
+    {
+      "attribute": "a10",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.3131499244091952,
+        "kind": "INFERRED",
+        "sources": [
+          "src_5"
+        ],
+        "spec": 142,
+        "value": "jEkbhhGQkull8gIyVO9FneShcjhsKyCIz9UbmTNk"
+      },
+      "conflict_idx": 34,
+      "correct_vs_lattice_out_of_replays": 0,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 1166,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "oNHY2HTsqNIdeF2ah0VYcEkHunmo4G6p4iWrYVWZ"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 37322
+    },
+    {
+      "attribute": "a30",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_4"
+        ],
+        "spec": 130,
+        "value": "sciAQSr8uC7uYZn98ZZNj4IQBrVIrYp8NP4um1Oz"
+      },
+      "conflict_idx": 35,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 1,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "OHwIosLIJY63w29nQZwA2ykXxD6Zz6cl6VB4CKGA"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 62
+    },
+    {
+      "attribute": "a12",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_1"
+        ],
+        "spec": 104,
+        "value": "2uTJPOqjxVroVdqcvPoizyj8Q43VOOHwwfXQx79w"
+      },
+      "conflict_idx": 36,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "incumbent_wins",
+      "incumbent": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "spec": 199,
+        "value": "2IUWcGrU5thKpLZtdMN0XrYpZwDCQQnxxgVXYlyD"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 12
+    },
+    {
+      "attribute": "a15",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.5232715530816874,
+        "kind": "INFERRED",
+        "sources": [
+          "src_6"
+        ],
+        "spec": 12,
+        "value": "36Ob92Xoza8dx0YHltG5ZhC4HYJu3hGTqoHWn5bi"
+      },
+      "conflict_idx": 37,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 1,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "JlpqfDwLBoQ8NTjMfJBq6zz04o709TFvtp7VZrdN"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 47
+    },
+    {
+      "attribute": "a12",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "sources": null,
+        "spec": 244,
+        "value": "EBBEn1JSdCzABMKxQ6XaE3BR4euczHgw0Aawi68Q"
+      },
+      "conflict_idx": 38,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 23,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "Ayw2Bs75M0Zd5NOZSFy5I1QMzs4R50SH3bgOAcmy"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 748
+    },
+    {
+      "attribute": "a16",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_3"
+        ],
+        "spec": 218,
+        "value": "30HO8ae7awgKAzlHfMeKCxfufElAjktaJTKpuUSq"
+      },
+      "conflict_idx": 39,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 4,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "Uxba1C5XpHvLIepis4b6CQj3Q3RRJ2wJ0ZKJspPt"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 144
+    },
+    {
+      "attribute": "a0",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.8639670227189664,
+        "kind": "INFERRED",
+        "sources": [
+          "src_6"
+        ],
+        "spec": 73,
+        "value": "rr9F1hrXMSXaXTlIO84s9JDEu5s2i0AlaP2RS9vO"
+      },
+      "conflict_idx": 40,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "incumbent_wins",
+      "incumbent": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "spec": 213,
+        "value": "tM0EgKo7pM5y0agto4vmFWY4h3vzCWT1Uwmh98W8"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 0
+    },
+    {
+      "attribute": "a22",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_3"
+        ],
+        "spec": 40,
+        "value": "xqJPAfT71Sea550bXyRVIPK1HVy79ecjM5Cl7enM"
+      },
+      "conflict_idx": 41,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "k2xSH4LLEahxRufszNEQhUmCS0iuvbOVfqC0Wqvr"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 22
+    },
+    {
+      "attribute": "a23",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.6709792281301235,
+        "kind": "INFERRED",
+        "sources": [
+          "src_0"
+        ],
+        "spec": 186,
+        "value": "hJ72GrUVbwj6HEQ9DziZ8nsAPZ49HDjdTiMenPPu"
+      },
+      "conflict_idx": 42,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "incumbent_wins",
+      "incumbent": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "spec": 106,
+        "value": "HxKJLQ0qkTe3QN2tbhCGzI4mlWnAb3dgOp0Vs0h4"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 23
+    },
+    {
+      "attribute": "a19",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.9890720385116334,
+        "kind": "INFERRED",
+        "sources": [
+          "src_7"
+        ],
+        "spec": 137,
+        "value": "NLB1e3zPU8e0Kskmj1K7FvUB6HqdSi39n34QD9KV"
+      },
+      "conflict_idx": 43,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 288,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "RuM4p6jcoGRdPaoBX2e6rAzs6IekvISMfHEzVTZg"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 9235
+    },
+    {
+      "attribute": "a21",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 0.844033042488164,
+        "kind": "INFERRED",
+        "sources": [
+          "src_3"
+        ],
+        "spec": 208,
+        "value": "wGRZ5pZGHKpcLCHY0Rvv41GJPwa1Ij6ZF0e9XOaj"
+      },
+      "conflict_idx": 44,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 10,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "zbtEceKxXmpPN9eFlJRGBGfR4tkx6gzthUpjj2e4"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 341
+    },
+    {
+      "attribute": "a30",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_5"
+        ],
+        "spec": 236,
+        "value": "vz6KveTShKxmkZIfWWN8lZ1GvTXFsToIf28pVvsy"
+      },
+      "conflict_idx": 45,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 17,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "cjlE7tlrJfB5f6vFpFLsPCEiGNymfzkWUwgmRW5d"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 574
+    },
+    {
+      "attribute": "a1",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_6"
+        ],
+        "spec": 237,
+        "value": "h8ndM0EthcngNNbhRKatIjcJzuMDkyWQrwCELBp9"
+      },
+      "conflict_idx": 46,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 10,
+        "new": 0
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "incumbent_wins",
+      "incumbent": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "spec": 50,
+        "value": "C07iL1ik5RkkPbofRzAEIMENHrNrziZ6qhwV2SsS"
+      },
+      "modal_count": 10,
+      "modal_verdict": "incumbent",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 1
+    },
+    {
+      "attribute": "a4",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "DERIVED",
+        "sources": [
+          "src_8"
+        ],
+        "spec": 234,
+        "value": "lhrkbb4TV2Rme4WEyjpjsqigxiOsCiy2O5HEkrcn"
+      },
+      "conflict_idx": 47,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 2,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "pPDfMhPCr3vv5eIsp4TUixyPB5gtklS0Nj6SsLND"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 68
+    },
+    {
+      "attribute": "a2",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "sources": null,
+        "spec": 243,
+        "value": "TpME9JD7cJfCW6si9U2KdMVJQttttbxxjZ03Nncc"
+      },
+      "conflict_idx": 48,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 0,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "9G6E2XvehHhvwBt4j7GUm5UDguREuEk27eiw84SI"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 2
+    },
+    {
+      "attribute": "a20",
+      "bucket": "unanimous",
+      "candidate": {
+        "conf": 1.0,
+        "kind": "MEASURED",
+        "sources": null,
+        "spec": 0,
+        "value": "KzH2C4YrGajoHVLxBjDTVnFIveEgvLYaiUmWRKEK"
+      },
+      "conflict_idx": 49,
+      "correct_vs_lattice_out_of_replays": 10,
+      "counts": {
+        "incumbent": 0,
+        "new": 10
+      },
+      "entity_id": 4,
+      "entropy_bits": 0.0,
+      "flipped": false,
+      "ground_truth_lattice": "new_wins",
+      "incumbent": {
+        "conf": 0.5,
+        "kind": "INFERRED",
+        "spec": 0,
+        "value": "EUCc8TJDNA9CwoING488ceyuhkMcs0hxPZFtBmuM"
+      },
+      "modal_count": 10,
+      "modal_verdict": "new",
+      "n_errors": 0,
+      "n_graded": 10,
+      "n_replays": 10,
+      "slot": 148
+    }
+  ],
+  "summary": {
+    "aggregate_correct_vs_lattice_rate": 0.96,
+    "buckets": {
+      "unanimous": 50
+    },
+    "elapsed_s": 91.7,
+    "flip_rate": 0.0,
+    "latency_ms": {
+      "max": 8997.03,
+      "mean": 1454.55052,
+      "median": 715.77,
+      "min": 463.4,
+      "p95": 4512.32,
+      "p99": 7632.96
+    },
+    "max_entropy_bits": 0.0,
+    "mean_entropy_bits": 0.0,
+    "median_entropy_bits": 0.0,
+    "model": "claude-haiku-4-5",
+    "n_calls_errors": 0,
+    "n_calls_ok": 500,
+    "n_calls_total": 500,
+    "n_conflicts": 50,
+    "n_conflicts_that_flipped": 0,
+    "n_replays_per_conflict": 10,
+    "seed": 20260712,
+    "worst_case_conflicts": [
+      {
+        "attribute": "a4",
+        "bucket": "unanimous",
+        "candidate": {
+          "conf": 1.0,
+          "kind": "DERIVED",
+          "sources": [
+            "src_0"
+          ],
+          "spec": 86,
+          "value": "nvXonpSX0pR7uJuITWV8FNNNZzfIrQe77r0qlpdO"
+        },
+        "conflict_idx": 0,
+        "correct_vs_lattice_out_of_replays": 10,
+        "counts": {
+          "incumbent": 0,
+          "new": 10
+        },
+        "entity_id": 91,
+        "entropy_bits": 0.0,
+        "flipped": false,
+        "ground_truth_lattice": "new_wins",
+        "incumbent": {
+          "conf": 0.5,
+          "kind": "INFERRED",
+          "spec": 0,
+          "value": "aye8N5cz7f3e1zd4oFepc0xUGLiim40TVK1Z0KO9"
+        },
+        "modal_count": 10,
+        "modal_verdict": "new",
+        "n_errors": 0,
+        "n_graded": 10,
+        "n_replays": 10,
+        "slot": 2916
+      },
+      {
+        "attribute": "a3",
+        "bucket": "unanimous",
+        "candidate": {
+          "conf": 1.0,
+          "kind": "DERIVED",
+          "sources": [
+            "src_2"
+          ],
+          "spec": 240,
+          "value": "ULajb9BQ67m8hOYCVRvKwLIg4ITM8WLbM5o2yuFf"
+        },
+        "conflict_idx": 1,
+        "correct_vs_lattice_out_of_replays": 10,
+        "counts": {
+          "incumbent": 0,
+          "new": 10
+        },
+        "entity_id": 0,
+        "entropy_bits": 0.0,
+        "flipped": false,
+        "ground_truth_lattice": "new_wins",
+        "incumbent": {
+          "conf": 0.5,
+          "kind": "INFERRED",
+          "spec": 0,
+          "value": "UxZHMC6155UgCBTDk46atunV6YIsCi5EJzyR05bR"
+        },
+        "modal_count": 10,
+        "modal_verdict": "new",
+        "n_errors": 0,
+        "n_graded": 10,
+        "n_replays": 10,
+        "slot": 3
+      },
+      {
+        "attribute": "a4",
+        "bucket": "unanimous",
+        "candidate": {
+          "conf": 1.0,
+          "kind": "MEASURED",
+          "sources": null,
+          "spec": 128,
+          "value": "xD35OqWyVTU27NhgkE5VeKHKZuzPJd2VHVBlhEE0"
+        },
+        "conflict_idx": 2,
+        "correct_vs_lattice_out_of_replays": 10,
+        "counts": {
+          "incumbent": 10,
+          "new": 0
+        },
+        "entity_id": 0,
+        "entropy_bits": 0.0,
+        "flipped": false,
+        "ground_truth_lattice": "incumbent_wins",
+        "incumbent": {
+          "conf": 1.0,
+          "kind": "MEASURED",
+          "spec": 244,
+          "value": "zQmwXXZXsUd75fWMINSeYeo9YgToWfa5zovBJ98L"
+        },
+        "modal_count": 10,
+        "modal_verdict": "incumbent",
+        "n_errors": 0,
+        "n_graded": 10,
+        "n_replays": 10,
+        "slot": 4
+      },
+      {
+        "attribute": "a0",
+        "bucket": "unanimous",
+        "candidate": {
+          "conf": 0.36553141818129764,
+          "kind": "INFERRED",
+          "sources": [
+            "src_6"
+          ],
+          "spec": 237,
+          "value": "XcFdX4VfePoQkUFtunHluC0FAy9zyUkBOogDpvwJ"
+        },
+        "conflict_idx": 3,
+        "correct_vs_lattice_out_of_replays": 0,
+        "counts": {
+          "incumbent": 10,
+          "new": 0
+        },
+        "entity_id": 0,
+        "entropy_bits": 0.0,
+        "flipped": false,
+        "ground_truth_lattice": "new_wins",
+        "incumbent": {
+          "conf": 0.5,
+          "kind": "INFERRED",
+          "spec": 0,
+          "value": "ZEcwcMPgGEMV8YQaeBSfdEMxwMBxsHn74C8So0zV"
+        },
+        "modal_count": 10,
+        "modal_verdict": "incumbent",
+        "n_errors": 0,
+        "n_graded": 10,
+        "n_replays": 10,
+        "slot": 0
+      },
+      {
+        "attribute": "a31",
+        "bucket": "unanimous",
+        "candidate": {
+          "conf": 0.5959467728636492,
+          "kind": "INFERRED",
+          "sources": [
+            "src_6"
+          ],
+          "spec": 36,
+          "value": "2FFjlrbYNBDo1rm586A96zJP7KUbhLbU9NyLmu3f"
+        },
+        "conflict_idx": 4,
+        "correct_vs_lattice_out_of_replays": 10,
+        "counts": {
+          "incumbent": 0,
+          "new": 10
+        },
+        "entity_id": 2832,
+        "entropy_bits": 0.0,
+        "flipped": false,
+        "ground_truth_lattice": "new_wins",
+        "incumbent": {
+          "conf": 0.5,
+          "kind": "INFERRED",
+          "spec": 0,
+          "value": "FC3jHpBPInSwNZnZbjGo90zqUQhBjJANT5NqGH0V"
+        },
+        "modal_count": 10,
+        "modal_verdict": "new",
+        "n_errors": 0,
+        "n_graded": 10,
+        "n_replays": 10,
+        "slot": 90655
+      }
+    ]
+  }
+}

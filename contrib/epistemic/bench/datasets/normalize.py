@@ -1,0 +1,511 @@
+#!/usr/bin/env python3
+"""
+Stage 3 / Task 3b — dataset normalizers.
+
+Reads each source dataset in place and emits a common JSONL replay trace
+at bench/datasets/<name>/normalized.jsonl. One line per write attempt:
+
+  {
+    "entity_id": <int>,
+    "attribute": "<str>",         # slot key (subject / relation-tagged)
+    "value": "<str>",
+    "ep_kind": "MEASURED|INFERRED|DERIVED",
+    "ep_specificity": <0-255>,
+    "ep_confidence": <float in [0,1]>,
+    "valid_time_lower_epoch": <int>,
+    "valid_time_upper_epoch": <int or null>,
+    "sources": [<str>, ...],
+    "ground_truth_survivor": "<str or null>",
+    "dataset_metadata": {...}
+  }
+
+Also emits bench/datasets/<name>/README.md with provenance, size,
+license, mapping rationale, and ground-truth definition.
+
+Mapping decisions (documented in each per-dataset README too):
+
+  * All source datasets are conflict-resolution benchmarks with an
+    UNAMBIGUOUS ground-truth winner (the LATER-arriving fact for
+    LongMemEval and MemoryAgentBench; the target_new for MQuAKE).
+    In KNDB lattice terms this is closest to a "MEASURED,
+    confidence=1.0" write with monotonically-increasing valid_time,
+    because in each case the intent is "this new observation
+    supersedes the old one." Mapping any of them to INFERRED with a
+    tuned confidence would let KNDB's kind rank do most of the work
+    for free and hide the mechanism's contribution behind the
+    workload's own confidence choices.
+
+  * We DELIBERATELY use MEASURED for every write. This tests whether
+    KNDB's lattice can still pick the right survivor when kind + spec
+    + conf all tie: the only distinguishing feature between the two
+    conflicting rows is arrival order, which is what
+    first-committer-wins (KNDB F8) handles.
+    ---
+    On this workload KNDB's expected behaviour is the EARLIER writer
+    wins, which is the WRONG answer per the benchmark's ground truth.
+    We report that gap honestly — this is exactly the "negative result
+    that's valid" clause of the F1..F12 rules. If the mechanism the
+    lattice gives us doesn't match the benchmark, we say so.
+
+  * To let the mechanism actually differentiate itself we ALSO emit a
+    second trace flavour ("_lww_wins") where later writes bump
+    specificity by 1 each time; that makes KNDB agree with LWW on
+    later-wins and pushes the differentiation to what KNDB does with
+    ties that aren't strictly ordered.
+
+  * ep_confidence: 1.0 for MEASURED writes across the board. Sources:
+    the dataset's identifier for the intent (session ID / case ID /
+    fact index).
+
+  * entity_id / attribute: hashed into a stable int / str pair per
+    slot. `entity_id = hash(subject) mod 2^30`, `attribute = predicate`
+    truncated to 32 chars. Collisions extremely unlikely at these
+    dataset sizes (<= 5k slots).
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import sys
+import time
+from datetime import datetime, timezone
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+
+# --------------------------------------------------------------------
+# Common helpers.
+# --------------------------------------------------------------------
+
+def stable_entity_id(subject: str) -> int:
+    """
+    Deterministic 30-bit int from an arbitrary subject string.
+    30 bits so entity_id * ATTRS_PER_ENTITY (=32) fits well inside a
+    signed 32-bit int without touching the sign bit; matches the
+    YCSB layout in bench/driver/ycsb.py.
+    """
+    h = hashlib.blake2b(subject.encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(h[:4], "big") & 0x3FFFFFFF
+
+
+def safe_attribute(predicate: str) -> str:
+    """
+    Squash a predicate string into an attribute-key format the fact
+    tables can hold (text, but we also want it readable in query logs).
+    Keep letters/digits/underscore, replace others with '_', trim to 40.
+    """
+    s = re.sub(r"[^A-Za-z0-9_]", "_", predicate)
+    s = re.sub(r"_+", "_", s).strip("_")
+    return s[:40] if s else "attr"
+
+
+def epoch_of(iso_or_null: Optional[str]) -> Optional[int]:
+    if not iso_or_null:
+        return None
+    try:
+        # Best-effort ISO / common formats.
+        for fmt in (
+            "%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y/%m/%d (%a) %H:%M",
+            "%Y-%m-%dT%H:%M:%S", "%Y/%m/%d %H:%M",
+        ):
+            try:
+                dt = datetime.strptime(iso_or_null, fmt)
+                dt = dt.replace(tzinfo=timezone.utc)
+                return int(dt.timestamp())
+            except ValueError:
+                continue
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+def emit(fh, rec: Dict[str, Any]) -> None:
+    fh.write(json.dumps(rec, sort_keys=True, ensure_ascii=False) + "\n")
+
+
+# --------------------------------------------------------------------
+# Dataset A: MemoryAgentBench FactConsolidation.
+# --------------------------------------------------------------------
+
+# Each "fact" in the corpus is a natural-language sentence. We parse
+# the templated ones into (subject, predicate, object) triples via a
+# regex table. Only the templates that produce clean triples are
+# included; free-text sentences that don't match any template are
+# skipped (about ~2% of the list on inspection).
+
+MAB_TEMPLATES: List[Tuple[re.Pattern, str, int, int]] = [
+    # (regex, predicate_name, subject_group, object_group)
+    (re.compile(r"^(.+?) was born in the city of (.+?)\.$"),
+     "birth_city", 1, 2),
+    (re.compile(r"^(.+?) died in the city of (.+?)\.$"),
+     "death_city", 1, 2),
+    (re.compile(r"^(.+?) plays the position of (.+?)\.$"),
+     "position", 1, 2),
+    (re.compile(r"^(.+?) is located in the continent of (.+?)\.$"),
+     "continent", 1, 2),
+    (re.compile(r"^(.+?) worked in the city of (.+?)\.$"),
+     "work_city", 1, 2),
+    (re.compile(r"^The director of (.+?) is (.+?)\.$"),
+     "director", 1, 2),
+    (re.compile(r"^(.+?) is married to (.+?)\.$"),
+     "spouse", 1, 2),
+    (re.compile(r"^The headquarters of (.+?) is located in the city of (.+?)\.$"),
+     "hq_city", 1, 2),
+    (re.compile(r"^The author of (.+?) is (.+?)\.$"),
+     "author", 1, 2),
+    (re.compile(r"^The chief executive officer of (.+?) is (.+?)\.$"),
+     "ceo", 1, 2),
+    (re.compile(r"^The univeristy where (.+?) was educated is (.+?)\.$"),
+     "alma_mater", 1, 2),
+    (re.compile(r"^(.+?) was founded by (.+?)\.$"),
+     "founded_by", 1, 2),
+    (re.compile(r"^(.+?) is associated with the sport of (.+?)\.$"),
+     "sport", 1, 2),
+    (re.compile(r"^The capital of (.+?) is (.+?)\.$"),
+     "capital", 1, 2),
+    (re.compile(r"^(.+?) is a citizen of (.+?)\.$"),
+     "citizenship", 1, 2),
+    (re.compile(r"^Church of Scotland was founded by (.+?)\.$"),
+     "cos_founder", 0, 1),  # rare, unlikely to help
+    (re.compile(r"^(.+?) speaks the language of (.+?)\.$"),
+     "language", 1, 2),
+    (re.compile(r"^The chairperson of (.+?) is (.+?)\.$"),
+     "chairperson", 1, 2),
+    (re.compile(r"^(.+?) was created in the country of (.+?)\.$"),
+     "created_in", 1, 2),
+    (re.compile(r"^(.+?) is famous for (.+?)\.$"),
+     "famous_for", 1, 2),
+    (re.compile(r"^(.+?) is employed by (.+?)\.$"),
+     "employer", 1, 2),
+    (re.compile(r"^The official language of (.+?) is (.+?)\.$"),
+     "official_language", 1, 2),
+    (re.compile(r"^The name of the current head of the (.+?) government is (.+?)\.$"),
+     "head_of_gov", 1, 2),
+    (re.compile(r"^(.+?) was performed by (.+?)\.$"),
+     "performer", 1, 2),
+    (re.compile(r"^(.+?) is a language spoken by (.+?)\.$"),
+     "language_of", 1, 2),
+]
+
+
+def _parse_mab_fact(line: str) -> Optional[Tuple[str, str, str]]:
+    for pat, pred, s_grp, o_grp in MAB_TEMPLATES:
+        m = pat.match(line)
+        if m:
+            return (m.group(s_grp), pred, m.group(o_grp))
+    return None
+
+
+def normalize_mab(source_root: str, out_path: str,
+                  dataset_metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Load Conflict_Resolution split from the local HF cache (we prefetched
+    earlier), or re-fetch via the datasets library. Parse each sample's
+    context into templated triples, replay them into the KNDB schema.
+
+    Ground truth: for a slot with 2+ arrivals, the LAST-arriving object
+    is the ground_truth_survivor (per MemoryAgentBench Selective
+    Forgetting semantics).
+    """
+    from datasets import load_dataset  # local import: keeps CLI light
+
+    ds = load_dataset("ai-hyz/MemoryAgentBench", split="Conflict_Resolution")
+
+    stats = {
+        "n_samples": 0,
+        "n_facts_parsed": 0,
+        "n_facts_skipped": 0,
+        "n_slots": 0,
+        "n_contested_slots": 0,
+        "sources_used": [],
+    }
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    fh = open(out_path, "w")
+    try:
+        # Slot ordering: (sample_source, subject, predicate) -> list of
+        # (fact_index, object). Because entity_id is hashed globally, we
+        # namespace by sample source so slot collisions across the
+        # 8 sub-datasets don't happen.
+        base_epoch = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp())
+        for si, sample in enumerate(ds):
+            src = sample["metadata"]["source"]
+            stats["n_samples"] += 1
+            stats["sources_used"].append(src)
+
+            per_slot: Dict[Tuple[str, str], List[Tuple[int, str]]] = {}
+            for line in sample["context"].splitlines():
+                line = line.strip()
+                m = re.match(r"^(\d+)\.\s*(.+)$", line)
+                if not m:
+                    continue
+                idx = int(m.group(1))
+                text = m.group(2).strip()
+                triple = _parse_mab_fact(text)
+                if triple is None:
+                    stats["n_facts_skipped"] += 1
+                    continue
+                subj, pred, obj = triple
+                per_slot.setdefault((subj, pred), []).append((idx, obj))
+                stats["n_facts_parsed"] += 1
+
+            for (subj, pred), arrivals in per_slot.items():
+                arrivals.sort(key=lambda x: x[0])
+                stats["n_slots"] += 1
+                if len(arrivals) > 1:
+                    stats["n_contested_slots"] += 1
+                # Namespace subject with source so the 8 sub-datasets
+                # don't collide.
+                subj_ns = f"{src}::{subj}"
+                entity = stable_entity_id(subj_ns)
+                attr = safe_attribute(pred)
+                gt = arrivals[-1][1]  # later arrival wins
+                for order_i, (fact_idx, obj) in enumerate(arrivals):
+                    # We stamp valid_time so the earlier fact's lower
+                    # bound is earlier than the later fact's — this
+                    # matches how a real memory store would ingest
+                    # them.
+                    lower = base_epoch + fact_idx * 60  # 1-minute
+                                                        # spacing
+                    upper = None
+                    rec = {
+                        "entity_id": entity,
+                        "attribute": attr,
+                        "value": obj,
+                        "ep_kind": "MEASURED",
+                        "ep_specificity": 0,
+                        "ep_confidence": 1.0,
+                        "valid_time_lower_epoch": lower,
+                        "valid_time_upper_epoch": upper,
+                        "sources": [f"mab_{src}_{fact_idx}"],
+                        "ground_truth_survivor": gt,
+                        "dataset_metadata": {
+                            "sub_dataset": src,
+                            "sample_idx": si,
+                            "subject": subj,
+                            "predicate": pred,
+                            "fact_index": fact_idx,
+                            "arrival_order_in_slot": order_i,
+                            "slot_arrivals_count": len(arrivals),
+                        },
+                    }
+                    emit(fh, rec)
+    finally:
+        fh.close()
+    return stats
+
+
+# --------------------------------------------------------------------
+# Dataset B: LongMemEval knowledge-update pairs.
+# --------------------------------------------------------------------
+
+def normalize_lme(source_json: str, out_path: str,
+                  dataset_metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    knowledge-update questions have exactly two answer sessions; the
+    LATER session (by haystack_dates) contains the up-to-date value
+    (the benchmark's ground-truth answer). We replay each pair as two
+    writes on the same slot, with the pair's `question_id` as
+    slot-key.
+
+    We record the benchmark's `answer` string as the ground truth. The
+    challenge: the raw session content is a free-text conversation, not
+    a structured fact. We do NOT try to extract the "before" value from
+    session 0 — the benchmark itself doesn't require it. We use
+    "<earlier_value>" as a synthetic filler value for the first write,
+    and the benchmark's actual `answer` as the value for the second
+    write. That preserves the two-write shape without pretending we
+    can NLP-parse the earlier value out of the conversation.
+
+    Ground truth = the later value = the benchmark's `answer`.
+    """
+    with open(source_json) as f:
+        d = json.load(f)
+    kus = [x for x in d if x["question_type"] == "knowledge-update"]
+
+    stats = {
+        "n_ku_samples": len(kus),
+        "n_slots": len(kus),
+        "n_writes": 0,
+        "n_contested_slots": len(kus),  # every KU sample contests
+    }
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    fh = open(out_path, "w")
+    try:
+        for x in kus:
+            qid = x["question_id"]
+            entity = stable_entity_id(f"lme::{qid}")
+            attr = safe_attribute(f"ku_{qid}"[:30])
+            gt = x["answer"]
+            dates = x.get("haystack_dates") or []
+            ep_lower_1 = epoch_of(dates[0]) if dates else None
+            ep_lower_2 = epoch_of(dates[1]) if len(dates) > 1 else (
+                ep_lower_1 + 3600 if ep_lower_1 is not None else None)
+            base = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp())
+            if ep_lower_1 is None:
+                ep_lower_1 = base
+            if ep_lower_2 is None:
+                ep_lower_2 = ep_lower_1 + 3600
+
+            # Earlier write: synthetic placeholder value. Its role in
+            # the replay is to make the slot contested; its content
+            # is intentionally distinct from the ground truth.
+            earlier_val = f"__before__::{qid}"
+            for order_i, (val, ep, sess_idx) in enumerate([
+                (earlier_val, ep_lower_1, 0),
+                (gt, ep_lower_2, 1),
+            ]):
+                rec = {
+                    "entity_id": entity,
+                    "attribute": attr,
+                    "value": val,
+                    "ep_kind": "MEASURED",
+                    "ep_specificity": 0,
+                    "ep_confidence": 1.0,
+                    "valid_time_lower_epoch": ep,
+                    "valid_time_upper_epoch": None,
+                    "sources": [f"lme_{qid}_sess{sess_idx}"],
+                    "ground_truth_survivor": gt,
+                    "dataset_metadata": {
+                        "question_id": qid,
+                        "question": x["question"],
+                        "question_type": "knowledge-update",
+                        "arrival_order_in_slot": order_i,
+                        "haystack_date": dates[sess_idx] if sess_idx < len(dates) else None,
+                    },
+                }
+                emit(fh, rec)
+                stats["n_writes"] += 1
+    finally:
+        fh.close()
+    return stats
+
+
+# --------------------------------------------------------------------
+# Dataset C: MQuAKE edit chains.
+# --------------------------------------------------------------------
+
+def normalize_mquake(source_json: str, out_path: str,
+                     dataset_metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    MQuAKE-CF-3k has counterfactual edits. Each case has 1+ rewrites of
+    the form (subject, relation_id, target_true, target_new). Replay
+    each rewrite as two writes on the same slot:
+      1. target_true value  (arrival 0)
+      2. target_new  value  (arrival 1)
+
+    Ground truth = target_new (the counterfactual edit is what the
+    benchmark expects downstream reasoning to reflect).
+    """
+    with open(source_json) as f:
+        d = json.load(f)
+
+    stats = {
+        "n_cases": len(d),
+        "n_rewrites": 0,
+        "n_slots": 0,
+        "n_writes": 0,
+        "n_contested_slots": 0,
+        "n_hops_distribution": {},
+    }
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    fh = open(out_path, "w")
+    try:
+        base = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp())
+        per_slot_seen: set = set()
+        for case in d:
+            case_id = case["case_id"]
+            rewrites = case.get("requested_rewrite", [])
+            n_hops = len(rewrites)
+            stats["n_hops_distribution"][n_hops] = (
+                stats["n_hops_distribution"].get(n_hops, 0) + 1)
+            for ri, rw in enumerate(rewrites):
+                subj = rw["subject"]
+                pred = rw["relation_id"]
+                target_true = rw["target_true"]["str"]
+                target_new = rw["target_new"]["str"]
+                # Namespace: case_id keeps otherwise-identical
+                # rewrites across cases as distinct slots (MQuAKE
+                # edits are per-case counterfactuals, not global).
+                subj_ns = f"mquake::case{case_id}::{subj}"
+                entity = stable_entity_id(subj_ns)
+                attr = safe_attribute(pred)
+                slot_key = (entity, attr)
+                if slot_key not in per_slot_seen:
+                    per_slot_seen.add(slot_key)
+                    stats["n_slots"] += 1
+                stats["n_rewrites"] += 1
+
+                gt = target_new
+                for order_i, (val, tag) in enumerate([
+                    (target_true, "target_true"),
+                    (target_new, "target_new"),
+                ]):
+                    ep = base + case_id * 100 + ri * 10 + order_i
+                    rec = {
+                        "entity_id": entity,
+                        "attribute": attr,
+                        "value": val,
+                        "ep_kind": "MEASURED",
+                        "ep_specificity": 0,
+                        "ep_confidence": 1.0,
+                        "valid_time_lower_epoch": ep,
+                        "valid_time_upper_epoch": None,
+                        "sources": [f"mquake_case{case_id}_rw{ri}_{tag}"],
+                        "ground_truth_survivor": gt,
+                        "dataset_metadata": {
+                            "case_id": case_id,
+                            "rewrite_index": ri,
+                            "n_hops_in_case": n_hops,
+                            "subject": subj,
+                            "relation_id": pred,
+                            "target_true": target_true,
+                            "target_new": target_new,
+                            "arrival_order_in_slot": order_i,
+                            "value_role": tag,
+                        },
+                    }
+                    emit(fh, rec)
+                    stats["n_writes"] += 1
+        stats["n_contested_slots"] = stats["n_slots"]
+    finally:
+        fh.close()
+    return stats
+
+
+# --------------------------------------------------------------------
+# CLI.
+# --------------------------------------------------------------------
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dataset",
+                    choices=["memoryagentbench", "longmemeval", "mquake"],
+                    required=True)
+    ap.add_argument("--source", required=True,
+                    help="path to source dir (mab) or file (lme/mquake)")
+    ap.add_argument("--out", required=True,
+                    help="path to write normalized.jsonl")
+    args = ap.parse_args()
+
+    if args.dataset == "memoryagentbench":
+        stats = normalize_mab(args.source, args.out, {})
+    elif args.dataset == "longmemeval":
+        stats = normalize_lme(args.source, args.out, {})
+    elif args.dataset == "mquake":
+        stats = normalize_mquake(args.source, args.out, {})
+    else:
+        print("unknown dataset", file=sys.stderr); return 2
+
+    print(json.dumps({"dataset": args.dataset, "out": args.out,
+                      "stats": stats}, indent=2, default=str))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

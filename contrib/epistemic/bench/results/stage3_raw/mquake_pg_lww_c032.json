@@ -1,0 +1,67 @@
+{
+  "concurrency": 32,
+  "conf_mode": "on",
+  "correctness": {
+    "AA": 0.12369077306733167,
+    "Edit_Acc": 0.12369077306733167,
+    "UOCS": 0.049,
+    "all_slot_accuracy": 0.12369077306733167,
+    "all_slots": 6015,
+    "all_slots_correct": 744,
+    "contested_slots": 6015,
+    "correct_on_contested": 744,
+    "missing_live_rows": 4514,
+    "n_cases": 3000,
+    "n_cases_full_correct": 147
+  },
+  "dataset": "mquake",
+  "elapsed_s": 1.914,
+  "goodput_correct_writes_per_s": 13.801923058577577,
+  "hardware": {
+    "cores": 18,
+    "cpu": "arm",
+    "os": "Darwin 25.4.0",
+    "ram_gb": 48
+  },
+  "isolation": "SR",
+  "llm_settings": {
+    "disable_test": "0",
+    "latency_mean_ms": "1120",
+    "latency_sigma": "0.3662",
+    "p_correct": "0.925"
+  },
+  "metrics": {
+    "abort_breakdown": {
+      "40001": 10427,
+      "NEW_LOSES": 0,
+      "check_violation": 0,
+      "other": 0
+    },
+    "abort_rate": 0.8667497921862012,
+    "latency_ms": {
+      "count": 1603,
+      "mean": 3.866733187772926,
+      "p50": 3.758542,
+      "p95": 6.024536899999999,
+      "p99": 7.088902,
+      "p99_9": 8.42849381800007
+    },
+    "throughput_writes_per_s": 837.4027892795514
+  },
+  "mv_mode": "on",
+  "n_writes_attempted": 12030,
+  "n_writes_in_full_trace": 12030,
+  "notes": "Real dataset replay. Every write is MEASURED (spec=0, conf=1.0) per each dataset's mapping README; the datasets' ground truth is later-wins-per-slot, while KNDB's F8 tiebreak is first-committer-wins. That mismatch is the finding, not a bug \u2014 see stage3_correctness.csv.",
+  "pg": {
+    "isolation": "SR",
+    "max_connections": 100,
+    "max_locks_per_transaction": 64,
+    "shared_buffers": "128MB",
+    "synchronous_commit": "on",
+    "version": "18.4 (Homebrew)",
+    "wal_level": "replica"
+  },
+  "seed": 20260712,
+  "system": "pg_lww",
+  "was_subsampled": false
+}
