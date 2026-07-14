@@ -1,0 +1,6 @@
+system,kind_mix,theta,clients,runs,tps_median,tps_std,abort_rate_median,correctness_median,goodput_median,p50_ms_median,p99_ms_median,p99_9_ms_median,contested_median,missing_live_median,multi_live_median
+epistemic,adversarial,0.9,8,1,3094.15,0.00,0.2750,1.0000,2243.15,1.692,4.015,4.496,20418,0,0
+pg_conf,adversarial,0.9,8,2,2764.02,278.49,0.1667,0.8029,1901.59,2.288,4.464,5.118,17340,0,21
+pg_heap,adversarial,0.9,8,1,8281.35,0.00,0.0000,0.0000,0.00,0.486,3.265,3.717,31667,0,31667
+pg_llm,adversarial,0.9,8,2,62.35,3.04,0.1984,0.5837,29.44,3.824,441.251,684.731,674,0,7
+pg_mv,adversarial,0.9,8,2,2671.95,336.16,0.1298,0.8422,1985.37,2.401,4.648,5.260,16205,0,23

@@ -1,0 +1,188 @@
+{
+  "clients": 32,
+  "conf_mode": "on",
+  "correctness": {
+    "contested_slots": 41590,
+    "correct_on_contested": 0,
+    "correctness_rate": 0.0,
+    "missing_live_rows": 0,
+    "multiple_live_rows": 41590,
+    "sample_misses": [
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 102,
+        "slot": 0
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 66,
+        "slot": 1
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 57,
+        "slot": 2
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 56,
+        "slot": 3
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 58,
+        "slot": 4
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 48,
+        "slot": 5
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 32,
+        "slot": 6
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 34,
+        "slot": 7
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 49,
+        "slot": 8
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 39,
+        "slot": 9
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 26,
+        "slot": 10
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "INFERRED",
+        "n_live": 23,
+        "slot": 11
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "DERIVED",
+        "n_live": 28,
+        "slot": 12
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 27,
+        "slot": 13
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 26,
+        "slot": 14
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 28,
+        "slot": 15
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 31,
+        "slot": 16
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "INFERRED",
+        "n_live": 29,
+        "slot": 17
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 19,
+        "slot": 18
+      },
+      {
+        "actual": "MULTIPLE_LIVE",
+        "expected_kind": "MEASURED",
+        "n_live": 21,
+        "slot": 19
+      }
+    ],
+    "uncontested_correct": 58410,
+    "uncontested_slots": 58410
+  },
+  "goodput_txn_per_s": 0.0,
+  "hardware": {
+    "cores": 18,
+    "cpu": "arm",
+    "os": "Darwin 25.4.0",
+    "ram_gb": 48
+  },
+  "isolation": "RC",
+  "kind_mix": "easy",
+  "llm_settings": {
+    "disable_test": "0",
+    "latency_mean_ms": "200",
+    "latency_sigma": "0.5",
+    "p_correct": "0.65"
+  },
+  "measurement_seconds": 20.0,
+  "metrics": {
+    "abort_breakdown": {
+      "40001": 0,
+      "NEW_LOSES": 0,
+      "check_violation": 0,
+      "other": 0
+    },
+    "abort_rate": 0.0,
+    "aborted_txns": 0,
+    "committed_txns": 107699,
+    "latency_ms": {
+      "count": 107699,
+      "mean": 5.937260696348156,
+      "p50": 5.728417,
+      "p95": 9.848336899999996,
+      "p99": 11.987798660000003,
+      "p99_9": 17.014422566000203
+    },
+    "throughput_txn_per_s": 5384.95
+  },
+  "mv_mode": "on",
+  "notes": "closed-loop; Stage 2 correctness axis. LLM baseline uses a calibrated mock (log-normal latency around 300ms mean, P_correct calibrated against Mem0/MemGPT LOCOMO 60-75%). Real API not called.",
+  "pg": {
+    "isolation": "RC",
+    "max_connections": 100,
+    "max_locks_per_transaction": 64,
+    "shared_buffers": "128MB",
+    "synchronous_commit": "on",
+    "version": "18.4 (Homebrew)",
+    "wal_level": "replica"
+  },
+  "run_index": 0,
+  "seed": 20260712,
+  "system": "pg_heap",
+  "warmup_seconds": 3.0,
+  "workload": "ycsb_a",
+  "zipfian_theta": 0.5
+}

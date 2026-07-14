@@ -1,0 +1,47 @@
+{
+  "clients": 8,
+  "hardware": {
+    "cores": 18,
+    "cpu": "arm",
+    "os": "Darwin 25.4.0",
+    "ram_gb": 48
+  },
+  "isolation": "RC",
+  "measurement_seconds": 30.0,
+  "metrics": {
+    "abort_breakdown": {
+      "40001": 0,
+      "NEW_LOSES": 6644,
+      "check_violation": 0,
+      "other": 0
+    },
+    "abort_rate": 0.09147861047240083,
+    "aborted_txns": 6644,
+    "committed_txns": 65985,
+    "latency_ms": {
+      "count": 65985,
+      "mean": 3.550631662059559,
+      "p50": 2.478917,
+      "p95": 9.157207799999998,
+      "p99": 11.012433159999999,
+      "p99_9": 12.59913367200001
+    },
+    "throughput_txn_per_s": 2199.5
+  },
+  "notes": "closed-loop; each client waits for response before next request. Understates tail latency vs open-loop; see bench/README.md.",
+  "pg": {
+    "isolation": "RC",
+    "max_connections": 100,
+    "max_locks_per_transaction": 64,
+    "shared_buffers": "128MB",
+    "synchronous_commit": "on",
+    "version": "18.4 (Homebrew)",
+    "wal_level": "replica"
+  },
+  "run_index": 2,
+  "seed": 20260712,
+  "system": "epistemic",
+  "warmup_seconds": 5.0,
+  "workload": "ycsb_a",
+  "zipfian_theta": 0.5
+}

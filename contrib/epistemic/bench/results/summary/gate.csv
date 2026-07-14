@@ -1,0 +1,7 @@
+system,workload,isolation,theta,clients,runs,tps_median,tps_std,abort_rate_median,p50_ms_median,p95_ms_median,p99_ms_median,p99_9_ms_median,mean_ms_median,commits_total,aborts_total,abort_40001_total,abort_new_loses_total,abort_check_violation_total,abort_other_total
+epistemic,ycsb_a,RC,0.0,8,3,2057.40,209.81,0.0500,2.698,9.572,11.400,13.176,3.825,190721,11591,0,11591,0,0
+epistemic,ycsb_a,RC,0.5,8,3,2199.50,74.44,0.0915,2.627,9.151,10.969,12.599,3.551,195363,19431,0,19431,0,0
+pg_heap,ycsb_a,RC,0.0,8,3,7119.50,794.54,0.0000,0.505,3.249,6.697,11.755,1.120,610931,0,0,0,0,0
+pg_heap,ycsb_a,RC,0.5,8,3,6840.33,2046.39,0.0000,0.525,3.364,6.671,11.176,1.166,517101,0,0,0,0,0
+pg_heap,ycsb_a,RC,0.9,8,3,6858.30,538.68,0.0000,0.548,3.466,6.507,7.631,1.163,589432,0,0,0,0,0
+pg_heap,ycsb_a,RC,0.99,8,3,6595.23,1998.99,0.0000,0.584,3.444,6.834,11.013,1.208,494667,0,0,0,0,0

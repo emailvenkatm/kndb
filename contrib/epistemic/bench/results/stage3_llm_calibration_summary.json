@@ -1,0 +1,21 @@
+{
+  "clients": 8,
+  "correctness_rate": 0.925,
+  "latency_ms": {
+    "max": 5597.41,
+    "mean": 1119.56345,
+    "median": 939.46,
+    "min": 621.98,
+    "p95": 1934.14,
+    "p99": 2311.51
+  },
+  "mix": "adversarial",
+  "model": "claude-haiku-4-5",
+  "n_correct": 185,
+  "n_errors": 0,
+  "n_graded": 200,
+  "n_ok_calls": 200,
+  "n_total": 200,
+  "seed": 20260712,
+  "theta": 0.9
+}

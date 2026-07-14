@@ -1,0 +1,288 @@
+{
+  "clients": 32,
+  "conf_mode": "on",
+  "correctness": {
+    "contested_slots": 31939,
+    "correct_on_contested": 21616,
+    "correctness_rate": 0.6767901311875764,
+    "missing_live_rows": 0,
+    "multiple_live_rows": 0,
+    "sample_misses": [
+      {
+        "actual_conf": 0.5,
+        "actual_kind": "INFERRED",
+        "actual_spec": 0,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 161,
+        "slot": 66
+      },
+      {
+        "actual_conf": 0.918,
+        "actual_kind": "INFERRED",
+        "actual_spec": 160,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 89,
+        "slot": 94
+      },
+      {
+        "actual_conf": 0.898,
+        "actual_kind": "INFERRED",
+        "actual_spec": 84,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 139,
+        "slot": 102
+      },
+      {
+        "actual_conf": 0.8364,
+        "actual_kind": "INFERRED",
+        "actual_spec": 76,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 241,
+        "slot": 103
+      },
+      {
+        "actual_conf": 0.6423,
+        "actual_kind": "INFERRED",
+        "actual_spec": 186,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 137,
+        "slot": 106
+      },
+      {
+        "actual_conf": 0.2023,
+        "actual_kind": "INFERRED",
+        "actual_spec": 202,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 219,
+        "slot": 119
+      },
+      {
+        "actual_conf": 0.4285,
+        "actual_kind": "INFERRED",
+        "actual_spec": 99,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 248,
+        "slot": 123
+      },
+      {
+        "actual_conf": 0.337,
+        "actual_kind": "INFERRED",
+        "actual_spec": 145,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 186,
+        "slot": 124
+      },
+      {
+        "actual_conf": 0.5,
+        "actual_kind": "INFERRED",
+        "actual_spec": 0,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 119,
+        "slot": 125
+      },
+      {
+        "actual_conf": 0.1147,
+        "actual_kind": "INFERRED",
+        "actual_spec": 163,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 200,
+        "slot": 129
+      },
+      {
+        "actual_conf": 0.7124,
+        "actual_kind": "INFERRED",
+        "actual_spec": 127,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 160,
+        "slot": 135
+      },
+      {
+        "actual_conf": 0.0075,
+        "actual_kind": "INFERRED",
+        "actual_spec": 248,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 51,
+        "slot": 141
+      },
+      {
+        "actual_conf": 0.5275,
+        "actual_kind": "INFERRED",
+        "actual_spec": 242,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 145,
+        "slot": 168
+      },
+      {
+        "actual_conf": 0.497,
+        "actual_kind": "INFERRED",
+        "actual_spec": 194,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 99,
+        "slot": 175
+      },
+      {
+        "actual_conf": 0.7366,
+        "actual_kind": "INFERRED",
+        "actual_spec": 217,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 202,
+        "slot": 183
+      },
+      {
+        "actual_conf": 0.6989,
+        "actual_kind": "INFERRED",
+        "actual_spec": 251,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 223,
+        "slot": 189
+      },
+      {
+        "actual_conf": 0.2612,
+        "actual_kind": "INFERRED",
+        "actual_spec": 113,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 126,
+        "slot": 205
+      },
+      {
+        "actual_conf": 0.8188,
+        "actual_kind": "INFERRED",
+        "actual_spec": 244,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 96,
+        "slot": 226
+      },
+      {
+        "actual_conf": 0.9048,
+        "actual_kind": "INFERRED",
+        "actual_spec": 42,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 90,
+        "slot": 228
+      },
+      {
+        "actual_conf": 0.5581,
+        "actual_kind": "INFERRED",
+        "actual_spec": 93,
+        "actual_value_in_tied_set": false,
+        "expected_conf": 1.0,
+        "expected_kind": "DERIVED",
+        "expected_n_tied_values": 1,
+        "expected_spec": 81,
+        "slot": 229
+      }
+    ],
+    "uncontested_correct": 68061,
+    "uncontested_slots": 68061
+  },
+  "goodput_txn_per_s": 1547.331317512504,
+  "hardware": {
+    "cores": 18,
+    "cpu": "arm",
+    "os": "Darwin 25.4.0",
+    "ram_gb": 48
+  },
+  "isolation": "RC",
+  "kind_mix": "adversarial",
+  "llm_settings": {
+    "disable_test": "0",
+    "latency_mean_ms": "200",
+    "latency_sigma": "0.5",
+    "p_correct": "0.65"
+  },
+  "measurement_seconds": 20.0,
+  "metrics": {
+    "abort_breakdown": {
+      "40001": 0,
+      "NEW_LOSES": 3521,
+      "check_violation": 12156,
+      "other": 0
+    },
+    "abort_rate": 0.21257813877174664,
+    "aborted_txns": 15677,
+    "committed_txns": 58070,
+    "latency_ms": {
+      "count": 58070,
+      "mean": 9.850135349543653,
+      "p50": 7.797167,
+      "p95": 26.083133999999998,
+      "p99": 47.44958499999999,
+      "p99_9": 77.44783200000167
+    },
+    "throughput_txn_per_s": 2903.5
+  },
+  "mv_mode": "on",
+  "notes": "closed-loop; Stage 2 correctness axis. LLM baseline uses a calibrated mock (log-normal latency around 300ms mean, P_correct calibrated against Mem0/MemGPT LOCOMO 60-75%). Real API not called.",
+  "pg": {
+    "isolation": "RC",
+    "max_connections": 100,
+    "max_locks_per_transaction": 64,
+    "shared_buffers": "128MB",
+    "synchronous_commit": "on",
+    "version": "18.4 (Homebrew)",
+    "wal_level": "replica"
+  },
+  "run_index": 0,
+  "seed": 20260712,
+  "system": "pg_trigger",
+  "warmup_seconds": 3.0,
+  "workload": "ycsb_a",
+  "zipfian_theta": 0.5
+}

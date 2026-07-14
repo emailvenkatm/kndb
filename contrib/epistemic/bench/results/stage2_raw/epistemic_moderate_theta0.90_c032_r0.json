@@ -1,0 +1,67 @@
+{
+  "clients": 32,
+  "conf_mode": "on",
+  "correctness": {
+    "contested_slots": 20855,
+    "correct_on_contested": 20855,
+    "correctness_rate": 1.0,
+    "missing_live_rows": 0,
+    "multiple_live_rows": 0,
+    "sample_misses": [],
+    "uncontested_correct": 79145,
+    "uncontested_slots": 79145
+  },
+  "goodput_txn_per_s": 2439.191715860112,
+  "hardware": {
+    "cores": 18,
+    "cpu": "arm",
+    "os": "Darwin 25.4.0",
+    "ram_gb": 48
+  },
+  "isolation": "RC",
+  "kind_mix": "moderate",
+  "llm_settings": {
+    "disable_test": "0",
+    "latency_mean_ms": "200",
+    "latency_sigma": "0.5",
+    "p_correct": "0.65"
+  },
+  "measurement_seconds": 20.0,
+  "metrics": {
+    "abort_breakdown": {
+      "40001": 0,
+      "NEW_LOSES": 24781,
+      "check_violation": 0,
+      "other": 0
+    },
+    "abort_rate": 0.270402095040646,
+    "aborted_txns": 24781,
+    "committed_txns": 66864,
+    "latency_ms": {
+      "count": 66864,
+      "mean": 7.825341669254008,
+      "p50": 6.8051665,
+      "p95": 16.46897945,
+      "p99": 24.498366249999947,
+      "p99_9": 41.16403760900011
+    },
+    "throughput_txn_per_s": 3343.2
+  },
+  "mv_mode": "on",
+  "notes": "closed-loop; Stage 2 correctness axis. LLM baseline uses a calibrated mock (log-normal latency around 300ms mean, P_correct calibrated against Mem0/MemGPT LOCOMO 60-75%). Real API not called.",
+  "pg": {
+    "isolation": "RC",
+    "max_connections": 100,
+    "max_locks_per_transaction": 64,
+    "shared_buffers": "128MB",
+    "synchronous_commit": "on",
+    "version": "18.4 (Homebrew)",
+    "wal_level": "replica"
+  },
+  "run_index": 0,
+  "seed": 20260712,
+  "system": "epistemic",
+  "warmup_seconds": 3.0,
+  "workload": "ycsb_a",
+  "zipfian_theta": 0.9
+}

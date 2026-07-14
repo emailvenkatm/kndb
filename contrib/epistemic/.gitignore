@@ -2,7 +2,11 @@
 *.bc
 *.dylib
 *.so
-results/
+# pgxs regression output, at contrib/epistemic/results/; do NOT
+# ignore contrib/epistemic/bench/results/ (that holds paper
+# artefacts and is committed).
+/results/
+!bench/results/
 regression.diffs
 regression.out
 tmp_check/
