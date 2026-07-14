@@ -4,6 +4,138 @@ Short notes recording load-bearing design choices and, where useful, the
 audit that produced them. New entries go on top. Each entry is dated and
 identifies the code paths involved.
 
+## 2026-07-12, F10: Stage 2 correctness axis + four baselines
+
+F9 built the Stage 1 YCSB harness and stopped honestly at both gates
+(throughput / abort rate / latency across epistemic, pg_heap,
+pg_trigger). F10 adds the correctness axis and four baselines that
+the paper compares against: pg_lww, pg_llm (mock), pg_conf, pg_mv.
+
+### Design decisions
+
+1. **Correctness rate = fraction of contested slots whose actual
+   live-row `(kind, spec, conf, value)` matches the lattice-max
+   over ALL WRITE ATTEMPTS (committed or not).**
+   The alternative — computing lattice-max only over commits — hides
+   the mechanism's rejections behind the mechanism's own bookkeeping.
+   A system that rejects a MEASURED intent (because its trigger got
+   the wrong answer) has failed to preserve the intent stream's
+   lattice-max. Committing on that rejection does not make it correct.
+   The correctness axis measures preservation of intent, not
+   agreement with self.
+2. **Tied-highest values form a set, not a single canonical value.**
+   The lattice does not deterministically pick a specific value when
+   (kind, spec, conf) tie; the tiebreak is orthogonal to the lattice
+   itself. KNDB uses xmin (F8), pg_trigger uses xmin implicitly via
+   `FOR UPDATE` order, LWW uses wall clock, etc. Any tied-highest
+   value is a lattice-legal survivor. Scoring "correct if actual
+   value ∈ tied-highest set" is the honest test.
+3. **Trace every write attempt (committed AND aborted, during
+   warmup AND measurement).**
+   Warmup writes still change the DB's live table; if we don't trace
+   them the lattice-max computation misses them and predicts a stale
+   winner. Warmup writes DO NOT count toward throughput/latency/abort
+   counters — those are still gated by the measurement window. F9's
+   Stage 1 driver only traced measurement-window writes, which is
+   correct for throughput but wrong for correctness. Stage 2's
+   driver (`bench/driver/correctness.py`) records every attempt into
+   a per-worker trace list and merges them offline; only counters are
+   window-gated.
+4. **LLM baseline uses a mock, not a real API.**
+   No LLM API key was plumbed to the test cluster; the Cloro key in
+   the standing context is a live billed credential the user did not
+   authorise for automated benchmarking. The mock draws latency from
+   a log-normal (mean 200-300 ms, sigma 0.5) calibrated against
+   Anthropic Haiku 4.5 and OpenAI GPT-4o-mini published single-shot
+   latency (100-800 ms on ~500-token structured prompts), and decides
+   correctness by a Bernoulli with P=0.65 calibrated against
+   published LLM conflict-resolution accuracy on the LOCOMO memory
+   benchmark (Chen et al. 2024, Mem0 / MemGPT-follow-up papers report
+   60-75%; we sit near the middle). Parameters are exposed as GUCs so
+   the disable-and-test transcript can force P=0.5.
+5. **pg_lww uses a BEFORE-INSERT trigger, not INSERT ... ON CONFLICT
+   DO UPDATE with a partial unique index.**
+   The elegant partial-unique + ON CONFLICT shape breaks the
+   preseed-preserving reset. ON CONFLICT DO UPDATE mutates the same
+   physical row, so the preseed-signature identifier (kind=INFERRED
+   spec=0 conf=0.5) no longer applies after the first workload write
+   and the reset routine deletes it. A trigger-based LWW has the
+   same shape as every other baseline's write path (SELECT FOR
+   UPDATE incumbent, close its sys_time, let NEW proceed) and
+   trivially matches the reset. Also uncovered: partial unique
+   `WHERE upper_inf(sys_time)` catches ZERO rows because
+   `tstzrange(now(), 'infinity')` stores the upper as an explicit
+   `+infinity` timestamptz value with the RANGE_UB_INF flag unset;
+   `upper_inf` returns false for those rows. The correct predicate
+   is `upper(sys_time) = 'infinity'::timestamptz`. Documented in
+   `bench/schema/pg_lww.sql`.
+
+### KNDB disable-and-test
+
+The F1..F8 discipline requires proving the lattice load-bearing via
+a source rebuild that forces `epistemic_precedence_cmp` to return
+`NEW_WINS` unconditionally. F10 does not touch src/ (standing rule).
+Instead the disable-and-test is external: pg_heap runs the same
+workload with no lattice at all. On the adversarial kind mix at
+theta=0.9 pg_heap ends the measurement window with tens of thousands
+of duplicate live rows (one per slot per write attempt, no eviction),
+which the correctness scorer counts as incorrect. Numbers are in
+`bench/results/summary/stage2.md`.
+
+### Baselines' individual disable-and-test knobs
+
+  * pg_llm  : `SET bench.fact_llm_disable_test = '1'` forces P=0.5.
+  * pg_conf : `SET bench.fact_conf_mode = 'off'` degrades to LWW.
+  * pg_mv   : `SET bench.fact_mv_mode = 'off'` degrades to LWW.
+
+### Findings that surprised F10
+
+  * pg_trigger has R1 inverted vs the AM (DERIVED sources check):
+    trigger says "no sources allowed", AM says "sources required".
+    Workload sends DERIVED with sources, so trigger rejects every
+    DERIVED write and its correctness on any mix containing DERIVED
+    is lower than the AM's not because of any lattice issue but
+    because of the asymmetric rule. F9 flagged this; F10 confirms
+    it via the correctness axis. F11 item.
+  * pg_lww trigger has an atomicity gap under RC concurrency: two
+    concurrent inserts to the same slot both find "no incumbent"
+    via SELECT FOR UPDATE (empty scan doesn't take a lock), both
+    commit, live-row count = 2. On easy/theta=0.5/c=8 we see ~10
+    such duplicate slots per 20-second measurement window. The
+    trigger design is subtly wrong; a partial unique index (see
+    above about the predicate gotcha) would close this but breaks
+    the reset. F10 documents the gap rather than fix it.
+  * pg_conf's correctness rate on `easy` and `moderate` mixes is
+    dominated by ep_confidence=1.0 (all MEASURED and DERIVED writes)
+    beating the preseed INFERRED conf=0.5. Because most contested
+    slots have at least one workload write with conf=1.0, pg_conf
+    correctness is coincidentally near-optimal on those mixes — not
+    because it does the right thing, but because the workload's
+    confidence distribution accidentally aligns with the lattice's
+    kind rank. On `adversarial` the alignment breaks down.
+
+### Files touched
+
+  * bench/schema/pg_lww.sql   — new
+  * bench/schema/pg_llm.sql   — new (mock LLM, calibrated latency +
+                                     P_correct GUC)
+  * bench/schema/pg_conf.sql  — new
+  * bench/schema/pg_mv.sql    — new
+  * bench/driver/correctness.py    — new (Stage 2 driver)
+  * bench/driver/summarize_stage2.py — new
+  * bench/driver/render_stage2.py    — new (CSV -> Markdown tables)
+  * bench/run_stage2.sh              — new orchestrator
+  * bench/README.md                  — pointer to Stage 2 section
+  * bench/results/summary/stage2.md  — F10 report
+  * bench/results/stage2_raw/*.json  — one JSON per cell-run
+
+### Test suite
+
+installcheck 6/6 unchanged (no src/ changes).
+check-e2e   8/8 unchanged.
+
+Stage 1's numbers (gate.csv, ycsb_a_rc.csv etc.) are unchanged.
+
 ## 2026-07-12, F8: xmin (first-committer-wins) tiebreak; accept batch ceiling
 
 F7 landed two adversarial findings against F6.

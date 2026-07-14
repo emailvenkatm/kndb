@@ -1,7 +1,20 @@
 # YCSB-style microbenchmark for the epistemic PoC
 
-Stage 1 of the paper #2 evaluation. Validates the harness end-to-end
-before we produce final numbers.
+Stages 1 and 2 of the paper #2 evaluation.
+
+* Stage 1 measures throughput / abort rate / latency for a YCSB-A / -B
+  mix on three targets (epistemic, pg_heap, pg_trigger). Harness in
+  `driver/ycsb.py`, orchestrator `run.sh`, results under
+  `results/raw/` + `results/summary/`. See F9's gate report at
+  `results/summary/README.md`.
+* Stage 2 adds a **correctness axis** plus four more baselines
+  (pg_lww, pg_llm, pg_conf, pg_mv). Harness in `driver/correctness.py`,
+  orchestrator `run_stage2.sh`, results under `results/stage2_raw/`
+  + `results/summary/stage2_*.csv`. See `results/summary/stage2.md`
+  for the F10 report.
+
+The rest of this file is Stage 1 primary. Stage 2 details live in
+`results/summary/stage2.md`.
 
 ## Scope, in one sentence
 
