@@ -28,6 +28,49 @@ PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
 # ------------------------------------------------------------------
+# Dylib hash guard.
+#
+# Three separate F-agents (F3, F8, F11) burned time chasing ghosts
+# because the installed `epistemic.dylib` diverged from the source
+# tree: the developer rebuilt local .o files, forgot to `make install`,
+# and PGXS's `installcheck` happily loaded the STALE dylib from
+# `$(pg_config --pkglibdir)`. We now hash every install and refuse to
+# run tests when the installed dylib doesn't match.
+#
+# * `install-hash` records the SHA-256 of the just-installed dylib
+#   into `.dylib.sha256` at the top of contrib/epistemic.
+# * `install` is extended (via a post-recipe hook) to also run
+#   `install-hash`, so any `make install` refreshes the recorded
+#   digest.
+# * `verify-dylib` calls scripts/verify_dylib.sh, which fails loudly
+#   if `.dylib.sha256` disagrees with the digest of the installed
+#   dylib.
+# * Every `check-e2e*` target and bench orchestrator depends on
+#   `verify-dylib`.
+# ------------------------------------------------------------------
+
+.PHONY: install-hash verify-dylib
+
+install-hash:
+	@if [ -f epistemic.dylib ]; then \
+	    HASH=$$(shasum -a 256 epistemic.dylib | awk '{print $$1}'); \
+	    printf '%s  epistemic.dylib\n' "$$HASH" > .dylib.sha256; \
+	    echo "install-hash: wrote .dylib.sha256 ($$HASH)"; \
+	else \
+	    echo "install-hash: epistemic.dylib not built yet — run 'make' first" >&2; \
+	    exit 1; \
+	fi
+
+# PGXS defines `install` as a real target (not phony), so append a
+# post-recipe hook rather than trying to redefine it. This runs
+# install-hash after every successful `make install`.
+install: install-hash-post
+install-hash-post: install-hash
+
+verify-dylib:
+	@bash $(srcdir)/scripts/verify_dylib.sh
+
+# ------------------------------------------------------------------
 # Metric-1 (recovery) and Metric-2 (concurrency) end-to-end scripts.
 #
 # Not wired into `check` / `installcheck` on purpose: they spin their
@@ -43,39 +86,39 @@ include $(PGXS)
         check-e2e-crash check-e2e-tie check-e2e-rc check-e2e-det \
         check-e2e-dl
 
-check-e2e-recovery:
+check-e2e-recovery: verify-dylib
 	@echo "===> recovery.sh"
 	@bash $(srcdir)/scripts/recovery.sh
 
-check-e2e-concurrency:
+check-e2e-concurrency: verify-dylib
 	@echo "===> concurrency.sh"
 	@bash $(srcdir)/scripts/concurrency.sh
 
-check-e2e-bypass:
+check-e2e-bypass: verify-dylib
 	@echo "===> bypass.sh"
 	@bash $(srcdir)/scripts/bypass.sh
 
-check-e2e-crash:
+check-e2e-crash: verify-dylib
 	@echo "===> crash_atomicity.sh"
 	@bash $(srcdir)/scripts/crash_atomicity.sh
 
-check-e2e-tie:
+check-e2e-tie: verify-dylib
 	@echo "===> tie_concurrency.sh"
 	@bash $(srcdir)/scripts/tie_concurrency.sh
 
-check-e2e-rc:
+check-e2e-rc: verify-dylib
 	@echo "===> rc_invariant.sh"
 	@bash $(srcdir)/scripts/rc_invariant.sh
 
-check-e2e-det:
+check-e2e-det: verify-dylib
 	@echo "===> tie_determinism.sh"
 	@bash $(srcdir)/scripts/tie_determinism.sh
 
-check-e2e-dl:
+check-e2e-dl: verify-dylib
 	@echo "===> deadlock_detection.sh"
 	@bash $(srcdir)/scripts/deadlock_detection.sh
 
-check-e2e:
+check-e2e: verify-dylib
 	@set -e; \
 	rc_recovery=0; rc_concurrency=0; rc_bypass=0; rc_crash=0; rc_tie=0; \
 	rc_rc=0; rc_det=0; rc_dl=0; \

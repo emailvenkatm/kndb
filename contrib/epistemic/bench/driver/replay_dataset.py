@@ -281,6 +281,45 @@ def measure_survivors(conn: psycopg.Connection, system: str,
     return survivors
 
 
+def _normalize_author_str(s: str) -> str:
+    """
+    Loose bibliographic normalization for the Dong Book-Author dataset.
+    Lowercase, collapse whitespace, strip punctuation (including the
+    HTML-encoded 'andapos;' seen in A1Books' listings). Cheaper than
+    the 2-gram Jaccard Dong et al. use in Sec 6.5 of VLDB'09, but good
+    enough to treat "O'Leary, Timothy J.; O'Leary, Linda I." and
+    "o'leary, timothy j.;  o'leary, linda i.;" as the SAME string
+    while keeping "Oleary" alone (an incomplete claim) DISTINCT.
+    """
+    import re as _re
+    if s is None:
+        return ""
+    t = s.lower().replace("andapos;", "'").replace("&apos;", "'")
+    t = _re.sub(r"[^\w\s']", " ", t)   # keep letters, digits, apos, ws
+    t = _re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def _bookauthor_match(sur: str, gt: str) -> bool:
+    """
+    Correct if either surface-normalized strings match exactly, OR
+    the survivor's normalized token bag CONTAINS every last-name-like
+    token in the gold. That lets 'Timothy J O'Leary; Linda I O'Leary'
+    (Tier A ProService entry) match 'o'leary, timothy j.;  o'leary,
+    linda i.;'. We do NOT do stemming or fuzzy matching — those would
+    let sloppy entries silently pass.
+    """
+    a, b = _normalize_author_str(sur), _normalize_author_str(gt)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    # Token-bag containment (per-author).
+    a_toks = set(a.split())
+    b_toks = set(b.split())
+    return b_toks.issubset(a_toks)
+
+
 def score_correctness(dataset: str, trace: List[Dict[str, Any]],
                       survivors: Dict[Tuple[int, str], str]
                       ) -> Dict[str, Any]:
@@ -310,12 +349,15 @@ def score_correctness(dataset: str, trace: List[Dict[str, Any]],
     n_correct_contested = 0
     n_missing = 0
 
+    match_fn = _bookauthor_match if dataset == "bookauthor" else (
+        lambda a, b: a == b)
+
     for key, gt in per_slot_gt.items():
         sur = survivors.get(key)
         if sur is None:
             n_missing += 1
             continue
-        if sur == gt:
+        if match_fn(sur, gt):
             n_correct_all += 1
             if key in per_slot_arrivals and per_slot_arrivals[key] >= 2:
                 n_correct_contested += 1
@@ -333,6 +375,12 @@ def score_correctness(dataset: str, trace: List[Dict[str, Any]],
     if dataset == "longmemeval":
         # KU-Acc == AA on this dataset since every slot is contested.
         corr["CRS_KU_Acc"] = corr["AA"]
+
+    if dataset == "bookauthor":
+        # Dong VLDB'09 Sec 6.5 calls this "Precision" — fraction of the
+        # 100 gold ISBNs whose survivor matches the cover-truth author
+        # list under the loose normalization. Alias to AA for consistency.
+        corr["Precision"] = corr["all_slot_accuracy"]
 
     if dataset == "mquake":
         # UOCS: fraction of cases where every rewrite's survivor == target_new.
@@ -363,7 +411,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dsn", default=os.environ.get("YCSB_DSN"))
     ap.add_argument("--dataset",
-                    choices=["memoryagentbench", "longmemeval", "mquake"],
+                    choices=["memoryagentbench", "longmemeval", "mquake",
+                             "bookauthor"],
                     required=True)
     ap.add_argument("--trace", required=True,
                     help="path to normalized.jsonl")

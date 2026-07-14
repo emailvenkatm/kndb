@@ -4,6 +4,252 @@ Short notes recording load-bearing design choices and, where useful, the
 audit that produced them. New entries go on top. Each entry is dated and
 identifies the code paths involved.
 
+## 2026-07-14, F11+F12+F13: Stage 3 rollup, LLM reality, real datasets, guard
+
+Three F-agents' worth of Stage 3 work rolled into one entry because
+the findings interlock. Every claim below is verified by the artefacts
+listed at the end; no numbers are recomputed from memory here.
+
+### F11 -- real Haiku 4.5 calibration; source-rebuild disable-and-test
+
+F10 shipped Stage 2 with two calibration debts. F11 closed both.
+
+  1. **Real LLM calibration.** `bench/scripts_stage3/llm_calibrate.py`
+     called claude-haiku-4-5 on 200 adversarial conflicts drawn from
+     the Stage 2 trace, same JSON-mode prompt template that
+     `bench/schema/pg_llm.sql`'s trigger uses. Zero API errors.
+     Measured:
+
+         n_graded         200
+         n_correct        185
+         correctness_rate 0.925   (F10 mock assumed 0.65)
+         latency_ms mean  1119.56 (F10 mock assumed 300)
+         latency_ms p95   1934.14
+         latency_ms p99   2311.51
+         model            claude-haiku-4-5
+
+     F10's mock was wrong in both directions. `pg_llm.sql` defaults
+     updated to `p_correct=0.925`, `latency_mean_ms=1120`,
+     `latency_sigma=0.5`. Disable-and-test still overrides P to 0.5
+     via GUC. Raw data at
+     `bench/results/stage3_llm_calibration.jsonl`.
+
+  2. **Source-rebuild disable-and-test.** F10's pg_heap-proxy
+     disable-and-test claimed -100 pp for the lattice. F11 patched
+     `src/epistemic_rules.c` to force `EP_CMP_NEW_WINS` at the
+     precedence-tie branch, rebuilt, reran adversarial theta=0.9 c=8,
+     then restored src/ byte-identical (git diff --stat src/ empty).
+
+         KNDB lattice ON       100.0 % correctness
+         KNDB lattice OFF       80.3 % correctness
+         delta                  -20 pp
+
+     The tighter proof decomposes the invariant into two mechanisms
+     each with its own disable-and-test:
+       * F6 advisory lock -> integrity (zero duplicate live rows)
+       * F1..F8 lattice + F8 xmin -> correct survivor when contested
+     The F10 pg_heap proxy conflated the two by turning off both at
+     once and attributing the full -100 pp swing to "the lattice."
+
+### F12 -- LLM non-determinism, three real datasets, all 0%
+
+Task 3a: `bench/scripts_stage3/llm_nondeterminism.py` sampled 50
+adversarial conflicts from F11's calibration set (stratified
+30 new_wins / 20 incumbent_wins per lattice ground truth), replayed
+each N=10 times against claude-haiku-4-5, concurrency 8. 500 real API
+calls, zero errors, 91.7 s wall clock. Result:
+
+        flip_rate                  0/50   = 0.000
+        mean per-conflict entropy  0.000 bits (all unanimous)
+        correctness vs lattice     480/500 = 0.960
+        unanimous-but-wrong        2/50    (indices 3 and 34; both
+                                            same signature: incumbent
+                                            INFERRED conf=0.5, cand
+                                            INFERRED spec>>0 conf<0.5.
+                                            The LLM consistently
+                                            prefers "more specific"
+                                            over "same kind higher
+                                            confidence," which is the
+                                            opposite of the KNDB
+                                            lattice's (spec, conf)
+                                            ordering.)
+
+Reframe for the paper: the LLM is stable, not noisy. Its correctness
+gap versus the lattice comes from SYSTEMATIC disagreement about
+lattice ordering, not from random sampling. That's a more interesting
+finding than "LLMs are noisy" and rules out the naive fix "just run
+the LLM three times and vote".
+
+Task 3b/3c: three real datasets normalized to a common trace and
+replayed against 7 systems at c={1,8,32}:
+
+  * LongMemEval knowledge-update pairs (78 samples, 156 writes)
+  * MemoryAgentBench Conflict_Resolution (37,820 writes)
+  * MQuAKE-CF-3k edit chains (12,030 writes)
+
+Result for KNDB on all three at c=1: **KU-Acc / Precision / UOCS = 0%**.
+Mechanism: every dataset's ground truth is "later-arriving fact wins"
+(the memory-store / knowledge-editing shape), whereas KNDB's F8
+tiebreak is xmin (first-committer-wins). Both writes carry the same
+(MEASURED, spec=0, conf=1.0) — the lattice cannot differentiate them
+by rank, so the tiebreak is what matters, and it's the WRONG tiebreak
+for these workloads. The mapping is documented in each dataset's
+`bench/datasets/<name>/README.md`; the writers do NOT peek at ground
+truth to reshape confidence. It's an honest 0% on datasets whose
+epistemic shape doesn't match KNDB's.
+
+**Second-order finding on pg_lww**: at c=1 pg_lww scores 97.4% on
+LongMemEval and 100% on MemoryAgentBench + MQuAKE — but that's a
+determinism artifact of single-writer arrival order. At c=8 pg_lww
+drops to 0.22-0.27, and at c=32 all seven systems collapse into a
+narrow 0.10-0.15 band. LWW's apparent win vanishes as soon as two
+writers race. The paper should quote LWW's numbers at c=1 with the
+c=8/32 collapse as a control.
+
+### F12 third dylib-cache incident -> F13 automation
+
+F3, F8, F11 each burned time chasing ghosts because the installed
+`epistemic.dylib` diverged from the source tree: developer rebuilt
+local .o files, forgot `make install`, and PGXS's `installcheck`
+happily loaded the STALE dylib from `$(pg_config --pkglibdir)`. Three
+strikes; the rule change ("always `make install`") never sticks, so
+F13 automated the check.
+
+  * `Makefile` gains `install-hash` (post-recipe of `install`) which
+    writes SHA-256 of the just-installed dylib to `.dylib.sha256`.
+  * `scripts/verify_dylib.sh` fails LOUDLY if either the installed
+    dylib or the source-tree dylib disagrees with `.dylib.sha256`.
+    Message names F3/F8/F11 explicitly so future F-agents see the
+    lineage.
+  * Every `check-e2e*` target and every bench orchestrator
+    (`bench/run.sh`, `bench/run_stage2.sh`, `bench/run_stage3.sh`,
+    `bench/scripts_stage3/run_bookauthor.sh`) runs `verify-dylib`
+    before doing anything.
+
+Adversarial proof, transcript captured 2026-07-14:
+
+        # pass state: matching hashes, verify-dylib exits 0
+        # patch src/epistemic_init.c (add exported symbol), `make`
+        # (rebuild only; NO `make install`):
+        #   .dylib.sha256   -> 807b2e87...
+        #   installed dylib -> 807b2e87... (unchanged)
+        #   source dylib    -> c63f5bde... (changed)
+        # verify-dylib exits 1 with "REBUILD AND REINSTALL" message.
+        # restore src, `make install`:
+        #   all three hashes -> 807b2e87... again
+        # verify-dylib exits 0.
+
+### F13 -- Book-Author, a data-fusion dataset where the lattice CAN win
+
+The F12 three-dataset finding narrows the paper's claim: KNDB is
+outperformed by naive LWW on datasets whose ground truth is
+last-writer-wins. To show the lattice ISN'T just structural theatre,
+F13 added a fourth dataset with epistemic-shaped ground truth: Dong
+et al. VLDB'09 Book-Author (895 bookstores, 1265 books, 33,971
+assertions, gold answers for 100 ISBNs).
+
+**The independence constraint.** The mapping must not peek at ground
+truth. Dong Table 7's per-source `Accu` numbers were rejected as a
+proxy — they're the output of a truth-discovery algorithm on the same
+data, which is peeking through a proxy. Adopted instead: two
+structural properties of `book.txt`, both computable in one pass
+without touching `book_golden.txt`:
+
+  * `n_listings(src)` -- source volume (Dong Table 7 col #Books)
+  * `canon_rate(src)` -- fraction of author fields in "Last, First"
+    format (proxy for canonical bibliographic feed vs scraped
+    aggregator)
+
+Neither is a perfect proxy — on Dong's Table 7 top-10, neither cleanly
+predicts SIM-Accu (Caiman: n=1156, canon=0.97, SIM-Accu=0.55). The
+paper claim isn't "these are excellent proxies" but "these are the
+best strictly-independent proxies available."
+
+**The mapping rule** (parametric in K):
+
+  * Tier A (top-K/2 by n AND canon >= 0.5): MEASURED, conf=1.0
+  * Tier B (rest of top-K by n):            INFERRED, conf=0.7
+  * Tier C (everything else):               DERIVED,  conf=0.4
+
+**Sensitivity analysis over K in {10, 25, 50, 100, 200}**, c=1,
+Precision on gold ISBNs (higher is better):
+
+        K         epistemic  pg_lww   pg_heap  pg_conf  pg_mv   pg_trigger  pg_llm
+        10        0.610      0.360    0.710    0.600    0.590   0.590       -
+        25        0.510      0.360    0.680    0.510    0.590   0.510       -
+        50        0.540      0.360    0.700    0.540    0.590   0.540       0.750
+        100       0.610      0.360    0.700    0.610    0.590   0.610       -
+        200       0.630      0.360    0.690    0.630    0.590   0.630       -
+        median    0.610      0.360    0.700    0.610    0.590   0.610       -
+        min       0.510      0.360    0.680    0.510    0.590   0.510       -
+        max       0.630      0.360    0.700    0.630    0.590   0.630       -
+
+**Findings:**
+  * KNDB beats pg_lww by 15-27 pp across every K. The signal from
+    the structural proxy is real, not a fluke of K.
+  * KNDB *matches* pg_conf everywhere (both at 0.510-0.630). That's
+    the honest deflator: within-tier confidence variance is zero, so
+    ranking by (kind, conf) is identical to ranking by conf alone.
+    The lattice's kind axis buys nothing on this workload beyond what
+    confidence encodes. This narrows the paper's claim from "the
+    lattice beats confidence-only" to "the lattice CAN beat
+    confidence-only, but requires a workload where kind and confidence
+    stratify differently."
+  * pg_heap's 0.68-0.71 is an integrity failure that looks like a
+    correctness win. pg_heap has 60-114 live rows per (entity_id,
+    attribute) at end of trace (verified by direct
+    `SELECT COUNT(*) FROM fact_heap WHERE upper(sys_time)='infinity'
+    GROUP BY 1,2` query — max group count 114). The scorer picks the
+    first row the scan returns; whether it happens to be correct is a
+    coin flip. Reported for completeness with a caveat.
+  * pg_llm (K=50 reference cell only, capped at 300 writes for cost):
+    Precision 0.75, 5.5 min wall clock. The LLM sees author strings
+    directly and beats the structural proxy, but at 300x-1000x the
+    latency of any deterministic system.
+  * pg_mv (streaming majority vote): flat 0.59 across K — its vote
+    counts don't consult tiers, so K doesn't affect it. Interestingly
+    at c=1 it's competitive with KNDB despite doing no source
+    ranking, because most bookstores agree on the popular ISBNs.
+
+Median Precision across K, c=1: epistemic = pg_conf = pg_trigger =
+0.610, all beating pg_lww at 0.360, all beaten by pg_llm at 0.750
+and (spuriously) by pg_heap at 0.700.
+
+### Test suite
+
+  * installcheck 6/6 unchanged.
+  * check-e2e 8/8 unchanged.
+  * src/ byte-identical to HEAD after F13 (git diff --stat src/ empty).
+
+### Files added/modified in F13
+
+  * `Makefile`                              -- install-hash target,
+                                              verify-dylib target,
+                                              verify-dylib prereq on
+                                              every check-e2e target.
+  * `.dylib.sha256`                         -- recorded install hash.
+  * `scripts/verify_dylib.sh`               -- guard script.
+  * `bench/datasets/normalize.py`           -- normalize_bookauthor,
+                                              --top-k CLI flag.
+  * `bench/datasets/bookauthor/README.md`   -- provenance, mapping,
+                                              sensitivity, license.
+  * `bench/datasets/bookauthor/source/`     -- .gitignored (source
+                                              fetched by run script).
+  * `bench/datasets/bookauthor/normalized_K*.jsonl` -- 5 K-tier
+                                              traces.
+  * `bench/driver/replay_dataset.py`        -- bookauthor branch in
+                                              score_correctness with
+                                              loose-normalization
+                                              matcher.
+  * `bench/scripts_stage3/run_bookauthor.sh` -- 91-cell orchestrator.
+  * `bench/scripts_stage3/summarize_bookauthor.py` -- summary
+                                              generator.
+  * `bench/results/stage3_raw/bookauthor_*.json` -- 91 cell results.
+  * `bench/results/summary/stage3_bookauthor.md` -- rollup.
+  * `bench/run.sh`, `bench/run_stage2.sh`, `bench/run_stage3.sh` --
+                                              call verify_dylib.sh at
+                                              orchestrator start.
+
 ## 2026-07-12, F10: Stage 2 correctness axis + four baselines
 
 F9 built the Stage 1 YCSB harness and stopped honestly at both gates

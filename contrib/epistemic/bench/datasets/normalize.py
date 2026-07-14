@@ -479,18 +479,232 @@ def normalize_mquake(source_json: str, out_path: str,
 
 
 # --------------------------------------------------------------------
+# Dataset D: Dong Book-Author (VLDB 2009).
+# --------------------------------------------------------------------
+#
+# 894 bookstores × 1265 books × 33971 assertions, gold standard for 100
+# ISBN-10 books (book_golden.txt). This is the classic data-fusion
+# workload where SOURCE RELIABILITY drives the correct answer — not
+# arrival order (which is what MemoryAgentBench / LongMemEval / MQuAKE
+# encode).
+#
+# --- The independence constraint ---------------------------------------
+# The F13 mapping rule MUST be computable BEFORE peeking at the golden
+# answer. Dong's Table 7 reports per-source "Accu" numbers computed by
+# their SIM algorithm, but SIM's output is a truth-discovery result —
+# using it as a source-tier proxy for KNDB is peeking at the answer by
+# proxy. We reject that path.
+#
+# Instead we compute two structural properties of each source directly
+# from `book.txt`, WITHOUT touching book_golden.txt:
+#
+#   n_listings(src)     = number of (isbn,author-list) rows the source
+#                         provides across the entire corpus. Documented
+#                         in Dong et al. Table 7 column "#Books".
+#   canon_rate(src)     = fraction of the source's author fields that
+#                         are in canonical "Lastname, Firstname" form
+#                         (i.e., contain a comma). Sources that publish
+#                         canonical bibliographic strings are more
+#                         likely to be primary-catalog sources
+#                         (Library-of-Congress-style feed) than scraped
+#                         aggregators. This is a proxy, not a proof.
+#
+# --- The mapping rule --------------------------------------------------
+# Given a top-K parameter (K in {10, 25, 50, 100, 200} for sensitivity
+# analysis), sources are tiered by n_listings desc:
+#
+#   Tier A (top-K/2 by n, AND canon_rate >= 0.5):
+#       ep_kind = MEASURED,   ep_confidence = 1.0
+#   Tier B (rest of top-K by n):
+#       ep_kind = INFERRED,   ep_confidence = 0.7
+#   Tier C (all other sources):
+#       ep_kind = DERIVED,    ep_confidence = 0.4  (needs sources[])
+#
+# Rationale: KNDB's lattice ranks MEASURED > INFERRED > DERIVED. If
+# our structural tiering is a useful signal, Tier-A assertions should
+# survive contention. If it isn't (i.e., raw #Books is a poor proxy for
+# author-list correctness), KNDB won't outperform. The sensitivity
+# analysis over K will show whether the choice of K matters.
+#
+# The canon_rate >= 0.5 cutoff for Tier A is documented in the README;
+# 0.5 is the midpoint of the [0,1] range with no ground-truth tuning.
+
+def _bookauthor_load(source_dir: str) -> Tuple[
+        List[Tuple[str, str, str, str]], Dict[str, str]]:
+    """
+    Read book.txt (assertions) and book_golden.txt (ground truth).
+    Returns (assertions, gold) where assertions is a list of
+    (source, isbn, title, author_list) tuples and gold maps ISBN -> gold
+    author string.
+    """
+    assertions: List[Tuple[str, str, str, str]] = []
+    with open(os.path.join(source_dir, "book.txt"), errors="replace") as f:
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 4:
+                continue
+            src, isbn, title, authors = (parts[0].strip(), parts[1].strip(),
+                                         parts[2].strip(), parts[3].strip())
+            if not src or not isbn:
+                continue
+            assertions.append((src, isbn, title, authors))
+
+    gold: Dict[str, str] = {}
+    with open(os.path.join(source_dir, "book_golden.txt"),
+              errors="replace") as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if not line.strip():
+                continue
+            parts = line.split("\t", 1)
+            if len(parts) < 2:
+                continue
+            gold[parts[0].strip()] = parts[1].strip()
+    return assertions, gold
+
+
+def _bookauthor_source_stats(
+        assertions: List[Tuple[str, str, str, str]]
+        ) -> Dict[str, Tuple[int, float, float]]:
+    """
+    Per-source structural metrics — all computed WITHOUT the golden
+    answer.
+
+    Returns {src -> (n_listings, non_blank_rate, canon_rate)}.
+    """
+    from collections import defaultdict
+    per_src: Dict[str, List[str]] = defaultdict(list)
+    for src, _isbn, _title, authors in assertions:
+        per_src[src].append(authors)
+    out: Dict[str, Tuple[int, float, float]] = {}
+    blank_markers = {"", "not available", "n/a", "none"}
+    for src, alist in per_src.items():
+        n = len(alist)
+        n_non_blank = sum(1 for a in alist
+                          if a.strip().lower() not in blank_markers)
+        n_canon = sum(1 for a in alist if "," in a)
+        out[src] = (n, n_non_blank / n, n_canon / n)
+    return out
+
+
+def normalize_bookauthor(source_dir: str, out_path: str,
+                         top_k: int,
+                         gold_only: bool = True,
+                         dataset_metadata: Optional[Dict[str, Any]] = None
+                         ) -> Dict[str, Any]:
+    """
+    Emit a normalized replay trace. When gold_only=True (default), only
+    assertions on ISBNs with a gold-standard author list are emitted;
+    that's 100 books × ~29 assertions/book = ~2900 writes, all of them
+    contested by value. The gold-only subset is what we score AA over.
+
+    top_k: the sensitivity-analysis parameter. Sources ranked top_k by
+    n_listings become Tier A/B; the rest are Tier C.
+    """
+    assertions, gold = _bookauthor_load(source_dir)
+    src_stats = _bookauthor_source_stats(assertions)
+
+    # Rank sources by n_listings desc — this is our ordering axis, and
+    # is documented in Dong et al. Table 7 column "#Books".
+    sorted_by_n = sorted(src_stats.items(), key=lambda kv: -kv[1][0])
+    top_k_sources = {s for s, _ in sorted_by_n[:top_k]}
+    half_k = max(1, top_k // 2)
+
+    def tier_of(src: str) -> Tuple[str, float]:
+        stats = src_stats[src]
+        if src in top_k_sources:
+            rank = next(i for i, (s, _) in enumerate(sorted_by_n) if s == src)
+            if rank < half_k and stats[2] >= 0.5:  # canon_rate >= 0.5
+                return ("MEASURED", 1.0)
+            return ("INFERRED", 0.7)
+        return ("DERIVED", 0.4)
+
+    stats_out: Dict[str, Any] = {
+        "n_sources_total": len(src_stats),
+        "n_sources_top_k": len(top_k_sources),
+        "top_k_parameter": top_k,
+        "n_gold_isbns": len(gold),
+        "n_assertions_all": len(assertions),
+        "tier_counts": {"MEASURED": 0, "INFERRED": 0, "DERIVED": 0},
+    }
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    fh = open(out_path, "w")
+    n_emitted = 0
+    base_epoch = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp())
+    # Assign a per-source epoch so KNDB's arrival order is a stable
+    # function of the source, not of file-line order. This is important
+    # for reproducibility across replays; the epoch itself is not used
+    # by any tier-decision logic.
+    src_epoch = {s: base_epoch + i * 60
+                 for i, (s, _) in enumerate(sorted_by_n)}
+    try:
+        for src, isbn, title, authors in assertions:
+            if gold_only and isbn not in gold:
+                continue
+            if not authors.strip() or authors.strip().lower() in (
+                    "not available", "n/a", "none"):
+                # Skip blank claims — they can't win the lattice and
+                # blow up the abort count for no informational reason.
+                continue
+            kind, conf = tier_of(src)
+            stats_out["tier_counts"][kind] += 1
+            entity = stable_entity_id(f"bookauthor::{isbn}")
+            attr = safe_attribute("author")
+            gt = gold.get(isbn)
+            rec = {
+                "entity_id": entity,
+                "attribute": attr,
+                "value": authors,
+                "ep_kind": kind,
+                "ep_specificity": 0,
+                "ep_confidence": conf,
+                "valid_time_lower_epoch": src_epoch[src],
+                "valid_time_upper_epoch": None,
+                # KNDB's rules require sources[] for INFERRED and
+                # DERIVED; skip for MEASURED (R3).
+                "sources": (None if kind == "MEASURED"
+                            else [f"bookstore::{src}"]),
+                "ground_truth_survivor": gt,
+                "dataset_metadata": {
+                    "isbn": isbn,
+                    "title": title,
+                    "source_name": src,
+                    "source_n_listings": src_stats[src][0],
+                    "source_canon_rate": src_stats[src][2],
+                    "tier_top_k": top_k,
+                    "assigned_tier": ("A" if kind == "MEASURED"
+                                      else ("B" if kind == "INFERRED"
+                                            else "C")),
+                },
+            }
+            emit(fh, rec)
+            n_emitted += 1
+    finally:
+        fh.close()
+    stats_out["n_writes_emitted"] = n_emitted
+    stats_out["gold_only"] = gold_only
+    return stats_out
+
+
+# --------------------------------------------------------------------
 # CLI.
 # --------------------------------------------------------------------
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset",
-                    choices=["memoryagentbench", "longmemeval", "mquake"],
+                    choices=["memoryagentbench", "longmemeval", "mquake",
+                             "bookauthor"],
                     required=True)
     ap.add_argument("--source", required=True,
-                    help="path to source dir (mab) or file (lme/mquake)")
+                    help="path to source dir (mab / bookauthor) or "
+                         "file (lme/mquake)")
     ap.add_argument("--out", required=True,
                     help="path to write normalized.jsonl")
+    ap.add_argument("--top-k", type=int, default=50,
+                    help="Dong bookauthor: top-K sources by n_listings "
+                         "become authority tiers A/B (rest -> C).")
     args = ap.parse_args()
 
     if args.dataset == "memoryagentbench":
@@ -499,6 +713,8 @@ def main() -> int:
         stats = normalize_lme(args.source, args.out, {})
     elif args.dataset == "mquake":
         stats = normalize_mquake(args.source, args.out, {})
+    elif args.dataset == "bookauthor":
+        stats = normalize_bookauthor(args.source, args.out, args.top_k)
     else:
         print("unknown dataset", file=sys.stderr); return 2
 

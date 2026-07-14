@@ -50,6 +50,10 @@ mkdir -p "${RAW_DIR}" "${SUMMARY_DIR}"
 log() { printf '[bench] %s\n' "$*"; }
 fail() { printf '[bench] FAIL: %s\n' "$*" >&2; exit 1; }
 
+# Refuse to run if the installed dylib has diverged from the source
+# tree (F13 automation of the F3/F8/F11 recurring incident).
+bash "${BENCH_DIR}/../scripts/verify_dylib.sh"
+
 # ---------------------------------------------------------------------
 # Setup: install extension, create three tables, register sources.
 # ---------------------------------------------------------------------
