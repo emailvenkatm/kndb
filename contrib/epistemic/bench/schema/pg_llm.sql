@@ -27,14 +27,28 @@
 -- P_correct values must be explicitly justified before any paper claim.
 --
 -- Toggles:
---   bench.fact_llm_p_correct     -> float in [0,1]. Default '0.65'.
---   bench.fact_llm_latency_mean  -> ms. Default '300'.
---   bench.fact_llm_latency_sigma -> log-normal sigma. Default '0.5'.
+--   bench.fact_llm_p_correct     -> float in [0,1]. Default '0.925'
+--                                    (refit against a real claude-haiku-4-5
+--                                    API — see F11 calibration).
+--   bench.fact_llm_latency_mean  -> ms. Default '1120' (refit).
+--   bench.fact_llm_latency_sigma -> log-normal sigma. Default '0.3662'
+--                                    (log-scale sd of the 200-sample calibration).
 --   bench.fact_llm_mode          -> 'on' (default) or 'off' (bypass
 --                                    entirely; degrades to LWW).
 --   bench.fact_llm_disable_test  -> when '1', forces P_correct=0.5
 --                                    (random) for the disable-and-test
 --                                    transcript.
+--
+-- F11 refit: the F10 defaults (P=0.65, mean=200ms, sigma=0.5) were
+-- calibrated against public Anthropic/OpenAI numbers because no LLM
+-- API was reachable at that time. F11 called
+-- claude-haiku-4-5-20251001 on 200 real (incumbent, candidate) pairs
+-- sampled from the adversarial theta=0.9 c=8 workload; measured
+-- correctness = 92.5%, mean e2e latency = 1120 ms (p50=939, p99=2312).
+-- Real API is noticeably better at correctness than public conflict-
+-- resolution benchmarks suggested and materially slower. The refit
+-- numbers are load-bearing on the paper's LLM-baseline story.
+-- Full transcript: bench/results/stage3_llm_calibration.jsonl.
 
 CREATE EXTENSION IF NOT EXISTS epistemic;
 
@@ -128,9 +142,9 @@ DECLARE
     inc_ctid tid;
     -- Configurables.
     mode text := fact_llm_setting('bench.fact_llm_mode', 'on');
-    p_correct real := fact_llm_setting('bench.fact_llm_p_correct', '0.65')::real;
-    lat_mean_ms real := fact_llm_setting('bench.fact_llm_latency_mean', '300')::real;
-    lat_sigma real := fact_llm_setting('bench.fact_llm_latency_sigma', '0.5')::real;
+    p_correct real := fact_llm_setting('bench.fact_llm_p_correct', '0.925')::real;
+    lat_mean_ms real := fact_llm_setting('bench.fact_llm_latency_mean', '1120')::real;
+    lat_sigma real := fact_llm_setting('bench.fact_llm_latency_sigma', '0.3662')::real;
     disable_test text := fact_llm_setting('bench.fact_llm_disable_test', '0');
     seed_input text;
     sleep_ms real;
