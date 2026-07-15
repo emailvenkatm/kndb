@@ -1,0 +1,75 @@
+{
+  "concurrency": 1,
+  "conf_mode": "on",
+  "correctness": {
+    "AA": 0.06,
+    "AA_ignoring_integrity": 0.06,
+    "Precision": 0.06,
+    "Precision_ignoring_integrity": 0.06,
+    "all_slot_accuracy": 0.06,
+    "all_slots": 100,
+    "all_slots_correct": 6,
+    "contested_slots": 100,
+    "correct_on_contested": 6,
+    "integrity": {
+      "integrity_status": "FAIL",
+      "max_live_rows_per_slot": 124,
+      "mean_live_rows_per_slot": 38.61,
+      "n_live_slots": 100,
+      "n_slots_with_gt_1_live": 100,
+      "sum_excess_live_rows": 3761
+    },
+    "integrity_status": "FAIL",
+    "missing_live_rows": 0
+  },
+  "dataset": "bookauthor",
+  "elapsed_s": 0.398,
+  "goodput_correct_writes_per_s": 582.5946153320358,
+  "hardware": {
+    "cores": 18,
+    "cpu": "arm",
+    "os": "Darwin 25.4.0",
+    "ram_gb": 48
+  },
+  "isolation": "SR",
+  "llm_settings": {
+    "disable_test": "0",
+    "latency_mean_ms": "1120",
+    "latency_sigma": "0.3662",
+    "p_correct": "0.925"
+  },
+  "metrics": {
+    "abort_breakdown": {
+      "40001": 0,
+      "NEW_LOSES": 0,
+      "check_violation": 0,
+      "other": 0
+    },
+    "abort_rate": 0.0,
+    "latency_ms": {
+      "count": 3861,
+      "mean": 0.10081570991970992,
+      "p50": 0.068083,
+      "p95": 0.215208,
+      "p99": 0.4616088000000007,
+      "p99_9": 2.3492150000000307
+    },
+    "throughput_writes_per_s": 9709.91025553393
+  },
+  "mv_mode": "on",
+  "n_writes_attempted": 3861,
+  "n_writes_in_full_trace": 3861,
+  "notes": "Real dataset replay. Every write is MEASURED (spec=0, conf=1.0) per each dataset's mapping README; the datasets' ground truth is later-wins-per-slot, while KNDB's F8 tiebreak is first-committer-wins. That mismatch is the finding, not a bug \u2014 see stage3_correctness.csv.",
+  "pg": {
+    "isolation": "SR",
+    "max_connections": 100,
+    "max_locks_per_transaction": 64,
+    "shared_buffers": "128MB",
+    "synchronous_commit": "on",
+    "version": "18.4 (Homebrew)",
+    "wal_level": "replica"
+  },
+  "seed": 20260712,
+  "system": "pg_heap",
+  "was_subsampled": false
+}

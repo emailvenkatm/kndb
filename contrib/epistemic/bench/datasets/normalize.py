@@ -744,6 +744,19 @@ def normalize_bookauthor_f14(source_dir: str, out_path: str,
             names = ["John Doe", "Jane Smith", "Alex Roe",
                      "Chris Poe", "Sam Foe"]
             return names[i % len(names)]
+        if adversarial_strategy == "sybil":
+            # F16 Sybil variant: EVERY adversarial agent shares the SAME
+            # wrong value per ISBN. This bootstraps mutual "agreement"
+            # among the N Sybil identities so agreement-driven
+            # truth-discovery algorithms (TruthFinder/CRH/CATD/ACCU)
+            # can be fooled at high N. Deterministic per ISBN only
+            # (index `i` is IGNORED).
+            h = hashlib.blake2b(f"{isbn}_sybil".encode(),
+                                digest_size=4).digest()
+            pool_idx = int.from_bytes(h, "big") % len(gold_answers)
+            if gold_answers[pool_idx] == gold[isbn]:
+                pool_idx = (pool_idx + 1) % len(gold_answers)
+            return gold_answers[pool_idx]
         # scrambled: pick a gold answer from a DIFFERENT ISBN.
         # deterministic per (isbn, i) so the run is reproducible.
         h = hashlib.blake2b(f"{isbn}_{i}".encode(), digest_size=4).digest()
@@ -883,6 +896,7 @@ def normalize_zheng_sentiment_f15(source_dir: str, out_path: str,
                                   top_k: int,
                                   n_adversarial_per_slot: int,
                                   adv_seed: int = 20260715,
+                                  adversarial_strategy: str = "flip_binary",
                                   ) -> Dict[str, Any]:
     """
     F15 normalizer for Zheng VLDB'17 d_sentiment with adversarial injection.
@@ -893,6 +907,21 @@ def normalize_zheng_sentiment_f15(source_dir: str, out_path: str,
     Threat model (same as F14): hostile writer asserts HIGH confidence on
     an INFERRED value that is the wrong-class label (binary flip since
     d_sentiment is a 2-class task).
+
+    F17 note (`adversarial_strategy`):
+      "flip_binary"  — F15 semantics: each adversarial write on a gold
+                       slot uses the flipped binary label. Because
+                       d_sentiment is a 2-class task the flipped label
+                       is UNIQUE, so all N adversaries on a slot use the
+                       same value by construction (Sybil-by-construction).
+      "sybil"        — F17 explicit Sybil label. Semantics IDENTICAL to
+                       flip_binary on Zheng (binary => the wrong label
+                       is unique), but recorded explicitly in
+                       `dataset_metadata.strategy` so the F17 F16-parity
+                       grid can be identified in downstream tooling.
+      NB: on Book-Author (multi-value slots) sybil vs scrambled diverge
+      meaningfully; on Zheng they cannot. F17 documents this in
+      `stage3_zheng_sybil.md`.
     """
     import random as _random
 
@@ -951,6 +980,7 @@ def normalize_zheng_sentiment_f15(source_dir: str, out_path: str,
         "n_gold_slots": len(truth),
         "n_answers_total": len(answers),
         "n_adversarial_per_slot": n_adversarial_per_slot,
+        "adversarial_strategy": adversarial_strategy,
         "adv_seed": adv_seed,
         "tier_counts": {"MEASURED": 0, "INFERRED": 0, "DERIVED": 0,
                         "ADVERSARIAL_INFERRED": 0},
@@ -1027,7 +1057,11 @@ def normalize_zheng_sentiment_f15(source_dir: str, out_path: str,
                     "question_id": qid,
                     "record_role": "adversarial",
                     "trace_index": idx,
-                    "strategy": "flip_binary",
+                    # F17: record the *label* the caller asked for so
+                    # downstream tooling can tell Sybil (F17) traces from
+                    # F15 flip traces even though the value is
+                    # bit-identical on binary d_sentiment.
+                    "strategy": adversarial_strategy,
                     "tier_top_k": top_k,
                     "assigned_tier": "ADV",
                 },
@@ -1175,9 +1209,15 @@ def main() -> int:
     ap.add_argument("--n-adversarial", type=int, default=0,
                     help="bookauthor_f14: N adversarial INFERRED "
                          "conf=[0.95,1.0] writes per gold ISBN.")
-    ap.add_argument("--adv-strategy", choices=["scrambled", "fabricated"],
+    ap.add_argument("--adv-strategy",
+                    choices=["scrambled", "fabricated", "sybil",
+                             "flip_binary"],
                     default="scrambled",
-                    help="bookauthor_f14 adversarial value strategy.")
+                    help="bookauthor_f14 adversarial value strategy; "
+                         "zheng_sentiment_f15 supports flip_binary "
+                         "(default F15 semantics) and sybil "
+                         "(F17 label; identical to flip_binary on "
+                         "binary d_sentiment).")
     ap.add_argument("--adv-seed", type=int, default=20260714,
                     help="bookauthor_f14 seed for confidence draws and "
                          "adversarial insertion positions.")
@@ -1196,9 +1236,23 @@ def main() -> int:
             args.source, args.out, args.top_k,
             args.n_adversarial, args.adv_strategy, args.adv_seed)
     elif args.dataset == "zheng_sentiment_f15":
+        # F17: allow --adv-strategy to flow through to Zheng. Default is
+        # "flip_binary" (F15 semantics); "sybil" is accepted and mapped
+        # to the same construction on this binary task, but recorded
+        # explicitly so F17 grid outputs are distinguishable. Reject
+        # Book-Author-only strategies.
+        zheng_strat = args.adv_strategy
+        if zheng_strat in ("scrambled", "fabricated"):
+            # These have no analogue on a binary label; treat as request
+            # for the F15 default and warn on stderr.
+            print(f"[normalize.py] warning: --adv-strategy={zheng_strat} "
+                  "not applicable to binary d_sentiment; using "
+                  "flip_binary.", file=sys.stderr)
+            zheng_strat = "flip_binary"
         stats = normalize_zheng_sentiment_f15(
             args.source, args.out, args.top_k,
-            args.n_adversarial, args.adv_seed)
+            args.n_adversarial, args.adv_seed,
+            adversarial_strategy=zheng_strat)
     else:
         print("unknown dataset", file=sys.stderr); return 2
 

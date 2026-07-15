@@ -1,0 +1,75 @@
+{
+  "concurrency": 1,
+  "conf_mode": "on",
+  "correctness": {
+    "AA": 0.49,
+    "AA_ignoring_integrity": 0.49,
+    "Precision": 0.49,
+    "Precision_ignoring_integrity": 0.49,
+    "all_slot_accuracy": 0.49,
+    "all_slots": 100,
+    "all_slots_correct": 49,
+    "contested_slots": 100,
+    "correct_on_contested": 49,
+    "integrity": {
+      "integrity_status": "PASS",
+      "max_live_rows_per_slot": 1,
+      "mean_live_rows_per_slot": 1.0,
+      "n_live_slots": 100,
+      "n_slots_with_gt_1_live": 0,
+      "sum_excess_live_rows": 0
+    },
+    "integrity_status": "PASS",
+    "missing_live_rows": 0
+  },
+  "dataset": "bookauthor",
+  "elapsed_s": 0.369,
+  "goodput_correct_writes_per_s": 82.0461190254572,
+  "hardware": {
+    "cores": 18,
+    "cpu": "arm",
+    "os": "Darwin 25.4.0",
+    "ram_gb": 48
+  },
+  "isolation": "SR",
+  "llm_settings": {
+    "disable_test": "0",
+    "latency_mean_ms": "1120",
+    "latency_sigma": "0.3662",
+    "p_correct": "0.925"
+  },
+  "metrics": {
+    "abort_breakdown": {
+      "40001": 0,
+      "NEW_LOSES": 2533,
+      "check_violation": 0,
+      "other": 0
+    },
+    "abort_rate": 0.8554542384329619,
+    "latency_ms": {
+      "count": 428,
+      "mean": 0.17557431074766355,
+      "p50": 0.137958,
+      "p95": 0.3432308,
+      "p99": 0.44983248000000015,
+      "p99_9": 2.0819221320000985
+    },
+    "throughput_writes_per_s": 1158.394804665167
+  },
+  "mv_mode": "on",
+  "n_writes_attempted": 2961,
+  "n_writes_in_full_trace": 2961,
+  "notes": "Real dataset replay. Every write is MEASURED (spec=0, conf=1.0) per each dataset's mapping README; the datasets' ground truth is later-wins-per-slot, while KNDB's F8 tiebreak is first-committer-wins. That mismatch is the finding, not a bug \u2014 see stage3_correctness.csv.",
+  "pg": {
+    "isolation": "SR",
+    "max_connections": 100,
+    "max_locks_per_transaction": 64,
+    "shared_buffers": "128MB",
+    "synchronous_commit": "on",
+    "version": "18.4 (Homebrew)",
+    "wal_level": "replica"
+  },
+  "seed": 20260712,
+  "system": "pg_mv",
+  "was_subsampled": false
+}

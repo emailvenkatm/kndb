@@ -1,0 +1,33 @@
+{
+  "algorithm": "catd",
+  "algorithm_kwargs": {
+    "max_iter": 100,
+    "seed": 0,
+    "alpha": 0.05
+  },
+  "trace": "/Users/venky/Development/papers/kndb/contrib/epistemic/bench/datasets/zheng_sentiment/normalized_f15_K045_N00.jsonl",
+  "dataset": "zheng_sentiment",
+  "n_writes_attempted": 20000,
+  "n_items": 1000,
+  "n_sources": 85,
+  "correctness": {
+    "contested_slots": 1000,
+    "correct_on_contested": 957,
+    "AA": 0.957,
+    "all_slots_correct": 957,
+    "all_slots": 1000,
+    "all_slot_accuracy": 0.957,
+    "missing_live_rows": 0,
+    "Precision": 0.957,
+    "integrity": {
+      "integrity_status": "N/A_offline",
+      "note": "offline algorithm emits exactly one predicted value per item by construction; no DB live-row semantics apply."
+    }
+  },
+  "metrics": {
+    "elapsed_s": 0.05,
+    "throughput_writes_per_s": 399056.9,
+    "abort_rate": 0.0
+  },
+  "kind": "td_offline"
+}

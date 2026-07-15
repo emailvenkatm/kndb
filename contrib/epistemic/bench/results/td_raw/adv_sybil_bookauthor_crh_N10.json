@@ -1,0 +1,32 @@
+{
+  "algorithm": "crh",
+  "algorithm_kwargs": {
+    "max_iter": 100,
+    "seed": 0
+  },
+  "trace": "/Users/venky/Development/papers/kndb/contrib/epistemic/bench/datasets/bookauthor/normalized_f16_K50_sybil_N10.jsonl",
+  "dataset": "bookauthor",
+  "n_writes_attempted": 3861,
+  "n_items": 100,
+  "n_sources": 237,
+  "correctness": {
+    "contested_slots": 100,
+    "correct_on_contested": 23,
+    "AA": 0.23,
+    "all_slots_correct": 23,
+    "all_slots": 100,
+    "all_slot_accuracy": 0.23,
+    "missing_live_rows": 0,
+    "Precision": 0.23,
+    "integrity": {
+      "integrity_status": "N/A_offline",
+      "note": "offline algorithm emits exactly one predicted value per item by construction; no DB live-row semantics apply."
+    }
+  },
+  "metrics": {
+    "elapsed_s": 0.003,
+    "throughput_writes_per_s": 1187284.5,
+    "abort_rate": 0.0
+  },
+  "kind": "td_offline"
+}

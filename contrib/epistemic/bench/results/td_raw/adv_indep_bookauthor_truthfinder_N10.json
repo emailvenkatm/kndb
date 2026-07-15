@@ -1,0 +1,35 @@
+{
+  "algorithm": "truthfinder",
+  "algorithm_kwargs": {
+    "max_iter": 100,
+    "seed": 0,
+    "dampening_factor": 0.3,
+    "influence_related": 0.5,
+    "initial_trust": 0.9
+  },
+  "trace": "/Users/venky/Development/papers/kndb/contrib/epistemic/bench/datasets/bookauthor/normalized_f14_K50_N10.jsonl",
+  "dataset": "bookauthor",
+  "n_writes_attempted": 3861,
+  "n_items": 100,
+  "n_sources": 237,
+  "correctness": {
+    "contested_slots": 100,
+    "correct_on_contested": 53,
+    "AA": 0.53,
+    "all_slots_correct": 53,
+    "all_slots": 100,
+    "all_slot_accuracy": 0.53,
+    "missing_live_rows": 0,
+    "Precision": 0.53,
+    "integrity": {
+      "integrity_status": "N/A_offline",
+      "note": "offline algorithm emits exactly one predicted value per item by construction; no DB live-row semantics apply."
+    }
+  },
+  "metrics": {
+    "elapsed_s": 0.042,
+    "throughput_writes_per_s": 93035.9,
+    "abort_rate": 0.0
+  },
+  "kind": "td_offline"
+}

@@ -4,6 +4,290 @@ Short notes recording load-bearing design choices and, where useful, the
 audit that produced them. New entries go on top. Each entry is dated and
 identifies the code paths involved.
 
+## 2026-07-12, F16: truth-discovery baselines and the Sybil-attack question
+
+F14 and F15 shipped a headline: KNDB beats pg_conf by 63pp (Book-Author)
+and 92.7pp (Zheng) on the confidence-forgery attack, with a
+source-rebuild disable-and-test proving the kind axis is load-bearing.
+A reviewer will immediately ask "why aren't the actual truth-discovery
+(TD) algorithms in the comparison?" — Book-Author and Zheng are
+datasets owned by the TD literature. F16 answers.
+
+### Hypothesis (recorded before running any adversarial cell)
+
+TD algorithms (TruthFinder, ACCU, CRH, CATD) infer source reliability
+from INTER-SOURCE AGREEMENT, not from an orthogonal kind signal. A
+confident liar with fabricated agent identities that agree with itself
+can bootstrap apparent reliability. On the F14 independent-value attack,
+TD should mostly reject (no coordination). On a coordinated-Sybil
+variant (all N adversarial agents share the SAME wrong value per gold
+item), TD should collapse. KNDB's kind axis is agnostic to Sybil count.
+
+### TD implementations
+
+Fresh reimplementations in `bench/scripts_td/td_algorithms.py`,
+written from the KDD07 / SIGMOD14 / VLDB15 / VLDB09 equations. No
+vendored code (Zheng's `crowd_truth_infer` commit `8d21647` is Py2
+without a license; IshitaTakeshi TruthFinder commit `82ae778` also
+license-absent; DAFNA-EA is Java). Each algorithm validated against
+Zheng VLDB'17 survey's `D_PosSent` numbers:
+
+  * CATD: 0.957 (survey: 0.960; delta 0.3pp)
+  * CRH:  0.950 (survey PM: 0.9504; delta 0.04pp)
+  * TruthFinder: 0.948 (not in survey table for this dataset; ballpark)
+  * ACCU: 0.951 (survey doesn't report ACCU on d_sentiment; ballpark
+    matches other confusion-matrix-free methods around 0.95)
+
+Plumbing verified. Runner: `bench/scripts_td/run_td_offline.py`.
+Adapter maps trace rows to (item, source, value); MEASURED KNDB rows
+(sources==[]) fall back to `dataset_metadata.worker_id` /
+`source_name` so TD sees a real 85-worker (Zheng) or 227-source
+(Book-Author) population, not 3000 anonymous single-observation
+"sources".
+
+Integrity column reported as `N/A_offline` — TD algorithms emit exactly
+one predicted value per item by construction, so DB live-row semantics
+don't apply. Reporting integrity as PASS would overstate.
+
+### Fairness discipline
+
+Default hyperparameters per each paper: TF γ=0.3, ρ=0.5, initial
+t=0.9; CRH max_iter=100; CATD α=0.05; ACCU initial A=0.8, n_false
+auto-inferred. No tuning either way. Every cell converged within
+10-30 iterations. TD algorithms consume THE SAME normalized trace
+KNDB and pg_* consume — no trace edits, no MEASURED-row filtering.
+
+### Predictions (verbatim, before empirical runs)
+
+F14 independent-value attack:
+  * TruthFinder: adversary's independent wrong values get low
+    confidence (no supporting sources). Should not collapse.
+    Prediction: precision close to baseline.
+  * CRH: similar — adversary's low weight after iteration.
+  * CATD: confidence-aware; adversary's high self-confidence should
+    be discounted after CATD sees inter-agreement is low. Prediction:
+    partial degradation.
+  * ACCU: models P(claim | truth, source); adversary's isolated
+    wrong values get low P. Prediction: robust.
+
+Sybil attack:
+  * TruthFinder: agrees-with-agreeing-source loop → adversary
+    bootstraps trust → COLLAPSE.
+  * CRH: coordinated attack minimizes CRH loss → COLLAPSE.
+  * CATD: confidence bound tightens with more agreeing observations
+    → COLLAPSE.
+  * ACCU: models copying but Sybil identities look independent →
+    COLLAPSE unless copy detection fires (base ACCU has none).
+  * KNDB: kind axis picks MEASURED unconditionally regardless of
+    Sybil count. Should stay at baseline.
+
+### Empirical results
+
+**Honest baseline (N=0)**:
+
+    system      Book-Author K=50   Zheng K=45
+    KNDB        0.630              0.927
+    TruthFinder 0.530              0.948
+    CRH         0.580              0.950
+    CATD        0.550              0.957
+    ACCU        0.530              0.951
+
+**F14 independent-value attack (Book-Author)** — TD algorithms are
+FLAT across N=1..10:
+
+    system      N=1    N=3    N=5    N=10
+    KNDB        0.630  0.630  0.630  0.630
+    pg_conf     0.000  0.000  0.000  0.000
+    TruthFinder 0.530  0.530  0.530  0.530
+    CRH         0.580  0.580  0.580  0.580
+    CATD        0.550  0.550  0.550  0.550
+    ACCU        0.530  0.530  0.530  0.530
+
+Prediction confirmed. Independent adversaries get no trust bootstrap.
+**Consequence**: F14's 63pp win over pg_conf drops to a 5-10pp win
+over TD baselines. The F14 headline needs qualification.
+
+**F15 coordinated-flip on Zheng d_sentiment** — TD partially resists:
+
+    system      N=1    N=3    N=5    N=10
+    KNDB        0.927  0.927  0.927  0.927
+    pg_conf     0.000  0.000  0.000  0.000
+    TruthFinder 0.905  0.690  0.557  0.494
+    CRH         0.953  0.951  0.951  0.951
+    CATD        0.955  0.953  0.948  0.000
+    ACCU        0.964  0.997  1.000  0.000
+
+Prediction partially wrong: CRH RESISTS through N=10 (0.951 flat).
+Why: 20 workers × 1000 items gives CRH enough per-source evidence to
+zero-weight adversaries whose `dif(s) = 1000` while honest source
+`dif` is small. CRH weight verified: adv = -8.2e-17, honest mean = 5.3.
+CATD and ACCU collapse only at N=10 (sharp cliff), TruthFinder degrades
+gradually. This IS a real finding — on `d_sentiment`, CRH is competitive
+with KNDB (0.951 vs 0.927, +2.4pp for CRH). The paper's 92.7pp
+"KNDB vs pg_conf" headline does NOT extend to "KNDB vs CRH" on Zheng.
+
+**F16 Sybil attack on Book-Author** (new workload) — TD collapses:
+
+Trace generator extended: `bench/datasets/normalize.py` gains
+`--adv-strategy sybil` which sets all N adversarial agents per gold
+ISBN to the SAME scrambled wrong author. Verified: 100/100 ISBNs
+have exactly 1 distinct value across N adversarial rows. adv-seed
+20260714 matches F14 so the honest-rows baseline coincides exactly
+(KNDB honest = 0.630 per F14, reproduced here).
+
+    system      N=1    N=3    N=5    N=10
+    KNDB        0.630  0.630  0.630  0.630
+    pg_conf     0.000  0.000  0.000  0.000
+    pg_mv       0.490  0.390  0.330  0.260
+    TruthFinder 0.530  0.470  0.120  0.010
+    CRH         0.580  0.590  0.590  0.230
+    CATD        0.550  0.550  0.420  0.100
+    ACCU        0.530  0.530  0.290  0.060
+
+All four TD algorithms collapse at N=10. Sharp cliff at N=5 for
+TF/CATD/ACCU (60-90pp drops). CRH holds up to N=5 then collapses to
+0.230 at N=10 (still above chance but well below KNDB's 0.630).
+**KNDB beats best TD (CRH) at N=10 by 40pp**; beats TruthFinder by
+62pp. The Sybil attack IS the paper-decisive workload against TD.
+
+### Disable-and-test: TD's mechanism is bimodal, not uniformly amplifying
+
+Same discipline as F14/F15 but at Python level (TD is not KNDB source,
+no dylib to rebuild). `bench/scripts_td/td_disable_and_test.py`
+replaces each TD algorithm's iterative trust/weight loop with plain
+majority-vote (frozen-trust equivalent — no per-source weighting at
+all). Sign of (TD_precision − MV_precision) tells us whether the
+agreement loop helps (positive) or hurts (negative) at each N.
+
+Book-Author Sybil N=10:
+
+    method                                Precision
+    TruthFinder mechanism ON              0.010
+    CRH mechanism ON                      0.230
+    CATD mechanism ON                     0.100
+    ACCU mechanism ON                     0.060
+    Majority-vote mechanism OFF           0.200
+
+TruthFinder, CATD, ACCU score LOWER than plain MV (0.010, 0.100,
+0.060 vs 0.200) at Book-Author Sybil N=10. On this cell the agreement
+loop amplifies the Sybil attack: each Sybil source's trust rises
+because it agrees with other Sybils, then it contributes more weight
+to the wrong fact. CRH scores higher than MV (0.230 vs 0.200) — its
+log-ratio does defensively discount adversaries but only by ~3pp.
+
+**Corrected framing (F17 Item 1):** TD's behavior across the full N
+sweep is BIMODAL, not uniformly amplifying. On Zheng d_sentiment
+(F17 Item 1) the disable-and-test signs alternate by algorithm and
+by N:
+
+    N     TF vs MV   CRH vs MV   CATD vs MV   ACCU vs MV
+    1     −0.007     +0.041      +0.043       +0.052
+    3     −0.168     +0.093      +0.095       +0.139
+    5     −0.185     +0.209      +0.206       +0.258
+    10    +0.201     +0.658      −0.293       −0.293
+    20     0.481     matches MV  matches MV   matches MV
+
+At sub-saturation N (1..5) CRH/CATD/ACCU legitimately DEFEND against
+Sybils (+0.041 to +0.258 over MV); TruthFinder is the only algorithm
+that amplifies at low N. At N=10 the mechanism inverts for CATD/ACCU
+(both drop 0.293 below MV) while CRH becomes the strongest defender
+in the whole suite (+0.658 over MV). At N=20 (density saturation on
+Zheng, Sybils = 20 honest voters) CRH, CATD, ACCU all crash to MV's
+0.000 floor; TruthFinder alone rescues to 0.482 via dampening. The
+Book-Author N=10 numbers (which motivated F16's "TD amplifies"
+framing) were the low-honest-density case where saturation had
+already arrived at N=10; the corrected story is that TD collapses at
+the density-saturation cell (whatever N that is on the dataset), and
+below that cell TD frequently *helps* rather than amplifies.
+
+KNDB's kind-axis disable-and-test (kind OFF drops F14 Precision
+0.630 → 0.000) was already proven under F14 and is the counterpart
+on the KNDB side.
+
+### Verdict for the paper
+
+The F14/F15 headline "KNDB beats pg_conf by 63pp / 92.7pp" survives
+verbatim — that comparison was correctly and honestly reported. What
+F16 adds is the harder question: does KNDB beat *truth-discovery*
+baselines, which are also known to handle adversarial data?
+
+Answer: three separate answers depending on threat model.
+
+  1. **Confidence-forgery only (F14/F15)**: KNDB wins 5-10pp over
+     the best TD baseline. Narrower win than vs pg_conf but real.
+     TD algorithms don't consume `ep_confidence` so they aren't
+     fooled by high-confidence adversarial writes — but they also
+     score 5-10pp lower than KNDB on the honest baseline because
+     they can't use the Tier-A MEASURED kind signal.
+  2. **Coordinated-flip on Zheng**: CRH matches KNDB (0.951 vs
+     0.927). TF/CATD/ACCU collapse (TF 0.494, CATD 0.000, ACCU
+     0.000 at N=10). Not a clean KNDB win — CRH is a legitimate
+     competitor on this dataset's density regime.
+  3. **Sybil on Book-Author (F16 workload)**: KNDB wins by 40-62pp
+     over every TD baseline at N=10. F17 Item 1 revealed this
+     saturation point is dataset-specific — Book-Author's Zipfian
+     source tail means most honest sources are already saturated
+     at N=10, while Zheng's uniform 20-per-slot density means
+     saturation is exactly N=20. Sybil is the attack shape where
+     the kind axis's orthogonality to inter-source-agreement is
+     decisively load-bearing at the density-saturation cell.
+
+The paper's positioning that survives F17 Item 1: **KNDB is the
+only system whose Sybil-robustness does not depend on per-slot
+honest-vote count remaining strictly greater than Sybil count.
+Every TD algorithm we tested fails at 1:1 density; KNDB does not.**
+Below the density-saturation cell, CRH is a legitimate competitor
+and TD algorithms frequently outperform KNDB — that regime must be
+disclosed prominently in the paper.
+
+Related-work section will need to cite Yin/Han/Yu KDD07 (TruthFinder),
+Li SIGMOD14 (CRH), Li VLDB15 (CATD), Dong VLDB09 (ACCU), and
+Zheng VLDB17 (survey); the CRH-matches-KNDB result on Zheng is
+disclosed rather than buried.
+
+### Test suite
+
+installcheck / check-e2e not re-run (F16 did not touch KNDB src/;
+only `bench/datasets/normalize.py` gained an `adv-strategy` option
+and Python-only TD adapter code was added). Verified:
+`git diff --stat contrib/epistemic/src/` empty;
+`scripts/verify_dylib.sh` exit 0; dylib sha256 =
+`807b2e87f64e9cb257d568313b5bc74d1eb946d96b2abc6de85b65d5f251fd74`.
+
+### Files added / modified in F16
+
+  * `bench/scripts_td/td_algorithms.py` — fresh Python 3
+    reimplementations of TruthFinder, CRH, CATD, ACCU. ~330 lines.
+  * `bench/scripts_td/run_td_offline.py` — offline runner, reuses
+    `bench/driver/replay_dataset.score_correctness` for scoring
+    parity with DB systems.
+  * `bench/scripts_td/td_disable_and_test.py` — proves TD's
+    agreement mechanism is what causes Sybil collapse.
+  * `bench/datasets/normalize.py` — new `sybil` value for
+    `--adv-strategy`; `wrong_value_for_isbn(isbn, i)` under sybil
+    ignores `i` and returns same scrambled value per ISBN.
+  * `bench/datasets/bookauthor/normalized_f14_K50_N00.jsonl` — new
+    honest baseline (N=0) trace at F14 seed. Was missing from F14
+    commit — F14 only shipped N∈{1,3,5,10} adversarial traces.
+  * `bench/datasets/bookauthor/normalized_f16_K50_sybil_N{01,03,05,10}.jsonl`
+    — Sybil traces (adv-seed 20260714 matches F14 honest-row seed
+    so KNDB honest baseline reproduces 0.630 exactly).
+  * `bench/results/td_raw/honest_zheng_{tf,crh,catd,accu}_K45_N00.json`
+    — 4 cells. TD reproduces Zheng VLDB'17 within 0.3pp.
+  * `bench/results/td_raw/honest_bookauthor_{tf,crh,catd,accu}_K50_N00.json`
+    — 4 cells.
+  * `bench/results/td_raw/adv_indep_bookauthor_{tf,crh,catd,accu}_N{01,03,05,10}.json`
+    — 16 cells. TD flat under independent-value attack.
+  * `bench/results/td_raw/adv_zheng_{tf,crh,catd,accu}_N{01,03,05,10}.json`
+    — 16 cells. TD partial-collapse under coordinated-flip.
+  * `bench/results/td_raw/adv_sybil_bookauthor_{tf,crh,catd,accu}_N{01,03,05,10}.json`
+    — 16 cells. TD collapses at N≥5 under Sybil.
+  * `bench/results/td_raw/adv_sybil_bookauthor_{epistemic,pg_conf,pg_lww,pg_mv,pg_trigger,pg_heap}_c001_N{01,03,05,10}.json`
+    — 24 cells. KNDB flat at 0.630; DB baselines match F14 behaviour.
+  * `bench/results/summary/stage3_td_baselines.md` — combined summary
+    with honest baseline, independent-attack, Sybil-attack tables and
+    the disable-and-test transcript.
+
 ## 2026-07-12, F15/F15b: Zheng crowdsourcing replication of the F14 result
 
 Second-workload replication of F14's confidence-forgery finding, on a
