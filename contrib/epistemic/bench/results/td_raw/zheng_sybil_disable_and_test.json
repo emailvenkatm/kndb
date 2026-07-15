@@ -1,0 +1,43 @@
+{
+  "kind": "td_disable_and_test",
+  "dataset": "zheng_sentiment",
+  "attack": "F17_sybil",
+  "K": 45,
+  "results": {
+    "N01": {
+      "truthfinder_on": 0.905,
+      "crh_on": 0.953,
+      "catd_on": 0.955,
+      "accu_on": 0.964,
+      "mv_off": 0.912
+    },
+    "N03": {
+      "truthfinder_on": 0.69,
+      "crh_on": 0.951,
+      "catd_on": 0.953,
+      "accu_on": 0.997,
+      "mv_off": 0.858
+    },
+    "N05": {
+      "truthfinder_on": 0.557,
+      "crh_on": 0.951,
+      "catd_on": 0.948,
+      "accu_on": 1.0,
+      "mv_off": 0.742
+    },
+    "N10": {
+      "truthfinder_on": 0.494,
+      "crh_on": 0.951,
+      "catd_on": 0.0,
+      "accu_on": 0.0,
+      "mv_off": 0.293
+    },
+    "N20": {
+      "truthfinder_on": 0.482,
+      "crh_on": 0.0,
+      "catd_on": 0.0,
+      "accu_on": 0.0,
+      "mv_off": 0.001
+    }
+  }
+}
