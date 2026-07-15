@@ -375,6 +375,300 @@ BATCH_ERR=$(grep -c 'epistemic write-time rule violation' "${OUT}" || true)
 record "fact_native  COPY_5rows raised_R3"   1 "${BATCH_ERR}"
 
 # ------------------------------------------------------------------
+# Bypass 4: UPDATE that rewrites the epistemic prefix (F20)
+#
+# Attack: INSERT (kind=INFERRED, conf=0.4), then UPDATE SET
+# kind='MEASURED', conf=1.0, value='forged'. Before F20 the AM
+# inherited heapam_tuple_update (heapam_handler.c:1385 REL_18_STABLE),
+# so heap_update ran without R1..R5, without the advisory lock, and
+# without the precedence lattice. The forged MEASURED row landed
+# with no eviction audit. F20 rejects the prefix change with
+# ERRCODE_CHECK_VIOLATION at epistemic_am.c epistemic_tuple_update.
+#
+# The trigger baseline uses a BEFORE UPDATE trigger that raises on
+# any change to ep_kind, ep_specificity, or ep_confidence — so that
+# scenario relies on the trigger not being disabled, which is the
+# same class of vulnerability bypass 1 already characterised.
+# ------------------------------------------------------------------
+log "bypass 4: UPDATE that rewrites the epistemic prefix (F20)"
+truncate_both
+# Register the source once so the R1/R2 preflight passes for the
+# INFERRED incumbent.
+"${PSQL}" ${PSQL_CONN} -v ON_ERROR_STOP=1 -q <<'SQL' >/dev/null
+INSERT INTO epistemic.source_registry (source_id, source_type)
+    VALUES ('s1', 'llm-inference')
+    ON CONFLICT DO NOTHING;
+CREATE OR REPLACE FUNCTION fact_trigger_update_rules()
+RETURNS trigger AS $$
+BEGIN
+    -- Cast the enum to text: the base epistemic_kind type has no
+    -- built-in equality operator, and IS DISTINCT FROM needs one.
+    IF NEW.ep_kind::text IS DISTINCT FROM OLD.ep_kind::text OR
+       NEW.ep_specificity IS DISTINCT FROM OLD.ep_specificity OR
+       NEW.ep_confidence IS DISTINCT FROM OLD.ep_confidence THEN
+        RAISE EXCEPTION 'epistemic write-time rule violation: F20 prefix immutable'
+            USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS fact_trigger_before_update ON fact_trigger;
+CREATE TRIGGER fact_trigger_before_update
+    BEFORE UPDATE ON fact_trigger
+    FOR EACH ROW EXECUTE FUNCTION fact_trigger_update_rules();
+SQL
+
+# Seed both tables with a legitimate INFERRED incumbent.
+SEED_ROW="(1, 'bp', 'benign', ARRAY['s1'],
+           tstzrange('2026-01-01', 'infinity'),
+           'INFERRED'::epistemic.epistemic_kind, 10::int2, 0.4::real)"
+"${PSQL}" ${PSQL_CONN} -v ON_ERROR_STOP=1 -q <<SQL >/dev/null
+INSERT INTO fact_native  (${BAD_COLS}) VALUES ${SEED_ROW};
+INSERT INTO fact_trigger (${BAD_COLS}) VALUES ${SEED_ROW};
+SQL
+
+# The forgery UPDATE. Same SQL against both tables; expect both to
+# reject (trigger baseline via BEFORE UPDATE, native via AM callback).
+attempt_update_forgery() {
+    local table="$1"
+    local preamble="$2"
+    local outfile="$3"
+
+    "${PSQL}" ${PSQL_CONN} -X -v ON_ERROR_STOP=0 <<SQL >"${outfile}" 2>&1
+${preamble}
+UPDATE ${table}
+   SET ep_kind = 'MEASURED'::epistemic.epistemic_kind,
+       ep_confidence = 1.0::real,
+       value = 'forged'
+ WHERE entity_id = 1 AND attribute = 'bp';
+SQL
+}
+
+OUT="${WORKDIR}/b4_trigger.log"
+attempt_update_forgery fact_trigger "" "${OUT}"
+printf '\n[bypass.sh] --- fact_trigger UPDATE-forgery transcript ---\n'
+cat "${OUT}"
+TRIGGER_KIND=$("${PSQL}" ${PSQL_CONN} -Atc \
+    "SELECT ep_kind::text FROM fact_trigger WHERE entity_id=1 AND attribute='bp';")
+# Trigger rejects: incumbent INFERRED survives.
+record "fact_trigger UPDATE_forgery kind_after" "INFERRED" "${TRIGGER_KIND}"
+TRIGGER_ERR=$(grep -c 'epistemic write-time rule violation\|F20 prefix immutable' "${OUT}" || true)
+record "fact_trigger UPDATE_forgery raised"     1 "${TRIGGER_ERR}"
+
+OUT="${WORKDIR}/b4_native.log"
+attempt_update_forgery fact_native "" "${OUT}"
+printf '\n[bypass.sh] --- fact_native UPDATE-forgery transcript ---\n'
+cat "${OUT}"
+NATIVE_KIND=$("${PSQL}" ${PSQL_CONN} -Atc \
+    "SELECT ep_kind::text FROM fact_native WHERE entity_id=1 AND attribute='bp';")
+# F20 rejects: incumbent INFERRED survives on native too.
+record "fact_native  UPDATE_forgery kind_after" "INFERRED" "${NATIVE_KIND}"
+NATIVE_ERR=$(grep -c 'refusing to alter the epistemic prefix' "${OUT}" || true)
+record "fact_native  UPDATE_forgery raised_F20" 1 "${NATIVE_ERR}"
+
+# Adversarial extension: DISABLE the BEFORE UPDATE trigger on the
+# trigger table and re-run — this MUST land on fact_trigger (bypass
+# succeeds) and MUST STILL be rejected on fact_native (AM callback
+# defeats the disable-trigger bypass, the F2 argument). Keeps the
+# trigger baseline honest and the F20+F2 differentiator visible.
+truncate_both
+"${PSQL}" ${PSQL_CONN} -v ON_ERROR_STOP=1 -q <<SQL >/dev/null
+INSERT INTO fact_native  (${BAD_COLS}) VALUES ${SEED_ROW};
+INSERT INTO fact_trigger (${BAD_COLS}) VALUES ${SEED_ROW};
+SQL
+
+OUT="${WORKDIR}/b4_trigger_disabled.log"
+attempt_update_forgery fact_trigger \
+    "ALTER TABLE fact_trigger DISABLE TRIGGER ALL;" \
+    "${OUT}"
+printf '\n[bypass.sh] --- fact_trigger UPDATE-forgery + DISABLE TRIGGER transcript ---\n'
+cat "${OUT}"
+TRIGGER_KIND=$("${PSQL}" ${PSQL_CONN} -Atc \
+    "SELECT ep_kind::text FROM fact_trigger WHERE entity_id=1 AND attribute='bp';")
+# With trigger disabled, forgery lands: MEASURED overwrites INFERRED.
+record "fact_trigger UPDATE_disabled kind_after" "MEASURED" "${TRIGGER_KIND}"
+
+OUT="${WORKDIR}/b4_native_disabled.log"
+attempt_update_forgery fact_native \
+    "ALTER TABLE fact_native DISABLE TRIGGER ALL;" \
+    "${OUT}"
+printf '\n[bypass.sh] --- fact_native UPDATE-forgery + DISABLE TRIGGER transcript ---\n'
+cat "${OUT}"
+NATIVE_KIND=$("${PSQL}" ${PSQL_CONN} -Atc \
+    "SELECT ep_kind::text FROM fact_native WHERE entity_id=1 AND attribute='bp';")
+# AM callback still fires even after DISABLE TRIGGER ALL.
+record "fact_native  UPDATE_disabled kind_after" "INFERRED" "${NATIVE_KIND}"
+NATIVE_ERR=$(grep -c 'refusing to alter the epistemic prefix' "${OUT}" || true)
+record "fact_native  UPDATE_disabled raised_F20" 1 "${NATIVE_ERR}"
+
+# ------------------------------------------------------------------
+# Bypass 5: DELETE that removes the incumbent (F20)
+#
+# Attack: INSERT (kind=MEASURED), DELETE the row, INSERT
+# (kind=INFERRED). Before F20 the AM inherited heapam_tuple_delete
+# (heapam_handler.c:1384 REL_18_STABLE); heap_delete ran unchecked;
+# the MEASURED incumbent vanished; the subsequent INFERRED landed
+# unopposed. F20 refuses DELETE outright with ERRCODE_FEATURE_NOT_SUPPORTED.
+#
+# The trigger baseline uses a BEFORE DELETE trigger that raises;
+# same DISABLE-TRIGGER extension applies as in bypass 4.
+# ------------------------------------------------------------------
+log "bypass 5: DELETE that removes the incumbent (F20)"
+truncate_both
+"${PSQL}" ${PSQL_CONN} -v ON_ERROR_STOP=1 -q <<'SQL' >/dev/null
+CREATE OR REPLACE FUNCTION fact_trigger_delete_rules()
+RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'epistemic write-time rule violation: F20 DELETE not supported'
+        USING ERRCODE = 'feature_not_supported';
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS fact_trigger_before_delete ON fact_trigger;
+CREATE TRIGGER fact_trigger_before_delete
+    BEFORE DELETE ON fact_trigger
+    FOR EACH ROW EXECUTE FUNCTION fact_trigger_delete_rules();
+SQL
+
+MEASURED_SEED="(2, 'diagnosis', 'sepsis', NULL,
+                tstzrange('2026-01-01', 'infinity'),
+                'MEASURED'::epistemic.epistemic_kind, 10::int2, 1.0::real)"
+"${PSQL}" ${PSQL_CONN} -v ON_ERROR_STOP=1 -q <<SQL >/dev/null
+INSERT INTO fact_native  (${BAD_COLS}) VALUES ${MEASURED_SEED};
+INSERT INTO fact_trigger (${BAD_COLS}) VALUES ${MEASURED_SEED};
+SQL
+
+attempt_delete_forgery() {
+    local table="$1"
+    local preamble="$2"
+    local outfile="$3"
+
+    "${PSQL}" ${PSQL_CONN} -X -v ON_ERROR_STOP=0 <<SQL >"${outfile}" 2>&1
+${preamble}
+DELETE FROM ${table} WHERE entity_id=2 AND attribute='diagnosis';
+SQL
+}
+
+OUT="${WORKDIR}/b5_trigger.log"
+attempt_delete_forgery fact_trigger "" "${OUT}"
+printf '\n[bypass.sh] --- fact_trigger DELETE-forgery transcript ---\n'
+cat "${OUT}"
+TRIGGER_ROWS=$("${PSQL}" ${PSQL_CONN} -Atc \
+    "SELECT count(*) FROM fact_trigger WHERE entity_id=2 AND attribute='diagnosis';")
+record "fact_trigger DELETE_forgery rows_after" 1 "${TRIGGER_ROWS}"
+TRIGGER_ERR=$(grep -c 'epistemic write-time rule violation\|F20 DELETE not supported' "${OUT}" || true)
+record "fact_trigger DELETE_forgery raised"     1 "${TRIGGER_ERR}"
+
+OUT="${WORKDIR}/b5_native.log"
+attempt_delete_forgery fact_native "" "${OUT}"
+printf '\n[bypass.sh] --- fact_native DELETE-forgery transcript ---\n'
+cat "${OUT}"
+NATIVE_ROWS=$("${PSQL}" ${PSQL_CONN} -Atc \
+    "SELECT count(*) FROM fact_native WHERE entity_id=2 AND attribute='diagnosis';")
+record "fact_native  DELETE_forgery rows_after" 1 "${NATIVE_ROWS}"
+NATIVE_ERR=$(grep -c 'DELETE from an epistemic table is not supported' "${OUT}" || true)
+record "fact_native  DELETE_forgery raised_F20" 1 "${NATIVE_ERR}"
+
+# Adversarial extension: DISABLE TRIGGER ALL + DELETE. Trigger baseline
+# loses (row vanishes); native still refuses.
+truncate_both
+"${PSQL}" ${PSQL_CONN} -v ON_ERROR_STOP=1 -q <<SQL >/dev/null
+INSERT INTO fact_native  (${BAD_COLS}) VALUES ${MEASURED_SEED};
+INSERT INTO fact_trigger (${BAD_COLS}) VALUES ${MEASURED_SEED};
+SQL
+
+OUT="${WORKDIR}/b5_trigger_disabled.log"
+attempt_delete_forgery fact_trigger \
+    "ALTER TABLE fact_trigger DISABLE TRIGGER ALL;" \
+    "${OUT}"
+printf '\n[bypass.sh] --- fact_trigger DELETE + DISABLE TRIGGER transcript ---\n'
+cat "${OUT}"
+TRIGGER_ROWS=$("${PSQL}" ${PSQL_CONN} -Atc \
+    "SELECT count(*) FROM fact_trigger WHERE entity_id=2 AND attribute='diagnosis';")
+# With BEFORE DELETE trigger disabled, DELETE lands: row vanishes.
+record "fact_trigger DELETE_disabled rows_after" 0 "${TRIGGER_ROWS}"
+
+OUT="${WORKDIR}/b5_native_disabled.log"
+attempt_delete_forgery fact_native \
+    "ALTER TABLE fact_native DISABLE TRIGGER ALL;" \
+    "${OUT}"
+printf '\n[bypass.sh] --- fact_native DELETE + DISABLE TRIGGER transcript ---\n'
+cat "${OUT}"
+NATIVE_ROWS=$("${PSQL}" ${PSQL_CONN} -Atc \
+    "SELECT count(*) FROM fact_native WHERE entity_id=2 AND attribute='diagnosis';")
+# AM callback fires regardless of trigger state.
+record "fact_native  DELETE_disabled rows_after" 1 "${NATIVE_ROWS}"
+NATIVE_ERR=$(grep -c 'DELETE from an epistemic table is not supported' "${OUT}" || true)
+record "fact_native  DELETE_disabled raised_F20" 1 "${NATIVE_ERR}"
+
+# ------------------------------------------------------------------
+# Bypass 6: speculative-insertion callback (F21)
+#
+# INSERT ... ON CONFLICT routes through table_tuple_insert_speculative
+# + table_tuple_complete_speculative (tableam.h:513-525 REL_18_STABLE;
+# ExecInsert dispatch at nodeModifyTable.c:1189-1216). Before F21 the
+# AM inherited heapam_tuple_insert_speculative and
+# heapam_tuple_complete_speculative verbatim (heapam_handler.c:2639-2640),
+# so ON CONFLICT DO UPDATE / DO NOTHING would skip R1..R5, the
+# advisory lock, precedence, and the eviction audit.
+#
+# The SQL surface for this attack is currently unreachable on the
+# epistemic AM: CREATE UNIQUE INDEX / ADD PRIMARY KEY / ADD UNIQUE /
+# ADD EXCLUDE all fail at heap_getnext's rd_tableam identity check
+# (heapam.c:1352), which the btree/gist ambuild scan depends on.
+# scripts/speculative_forgery.sh confirms that empirically. So the
+# SQL-level scenario for this bypass is "not currently reachable" —
+# but the overrides are defensive and load-bearing, so we exercise
+# them via the epistemic._probe_speculative_insert C entry point.
+#
+# For each cell we run one R3 forgery (MEASURED + sources[]) via the
+# speculative path; the AM must reject it. The adversarial disable-
+# and-test lives in the F21 DECISIONS entry: comment out the two
+# wiring lines in epistemic_am_handler, rebuild, rerun this scenario;
+# both cells then LAND, proving the wiring is load-bearing.
+# ------------------------------------------------------------------
+log "bypass 6: speculative INSERT (F21 tuple_insert_speculative / complete_speculative)"
+truncate_both
+
+OUT="${WORKDIR}/b6_native_probe.log"
+"${PSQL}" ${PSQL_CONN} -X -v ON_ERROR_STOP=0 <<'SQL' >"${OUT}" 2>&1
+INSERT INTO epistemic.source_registry (source_id, source_type)
+    VALUES ('s1', 'llm-inference') ON CONFLICT DO NOTHING;
+SELECT epistemic._probe_speculative_insert(
+    'fact_native', 999, 'bp_spec', 'forged-measured',
+    ARRAY['s1']::text[],
+    tstzrange('2026-01-01', 'infinity'),
+    'MEASURED'::epistemic.epistemic_kind, 0::int2, 1.0::real);
+SQL
+printf '\n[bypass.sh] --- fact_native speculative-probe R3 transcript ---\n'
+cat "${OUT}"
+NATIVE_ROWS=$("${PSQL}" ${PSQL_CONN} -Atc \
+    "SELECT count(*) FROM fact_native WHERE entity_id=999 AND attribute='bp_spec';")
+# With F21 the AM's speculative override rejects the R3 forgery.
+# Without F21 (wiring commented out, rebuild) this row would land on
+# fact_native, proving the bypass returns — see F21 DECISIONS entry
+# for the transcript.
+record "fact_native  SPEC_probe_R3 rows_after"    0 "${NATIVE_ROWS}"
+NATIVE_ERR=$(grep -c 'epistemic write-time rule violation' "${OUT}" || true)
+record "fact_native  SPEC_probe_R3 raised_R3"     1 "${NATIVE_ERR}"
+
+# Also exercise the R4 rejection on the speculative path.
+OUT="${WORKDIR}/b6_native_probe_r4.log"
+"${PSQL}" ${PSQL_CONN} -X -v ON_ERROR_STOP=0 <<'SQL' >"${OUT}" 2>&1
+SELECT epistemic._probe_speculative_insert(
+    'fact_native', 998, 'hr_spec', 'forged-inferred',
+    ARRAY['s1']::text[],
+    tstzrange('2026-01-01', 'infinity'),
+    'INFERRED'::epistemic.epistemic_kind, 0::int2, 1.0::real);
+SQL
+printf '\n[bypass.sh] --- fact_native speculative-probe R4 transcript ---\n'
+cat "${OUT}"
+NATIVE_ROWS=$("${PSQL}" ${PSQL_CONN} -Atc \
+    "SELECT count(*) FROM fact_native WHERE entity_id=998 AND attribute='hr_spec';")
+record "fact_native  SPEC_probe_R4 rows_after"    0 "${NATIVE_ROWS}"
+NATIVE_ERR=$(grep -c 'R4 (INFERRED confidence' "${OUT}" || true)
+record "fact_native  SPEC_probe_R4 raised_R4"     1 "${NATIVE_ERR}"
+
+# ------------------------------------------------------------------
 # F7 interaction characterization: per-slot advisory locks accumulate
 # under COPY just like under INSERT. F7's ~15k ceiling at the PG
 # default max_locks_per_transaction=64 applies to COPY too. Sweep

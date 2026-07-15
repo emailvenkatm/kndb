@@ -2,16 +2,79 @@
  * epistemic_am.c
  *
  * Table access method handler. Copies heapam's TableAmRoutine at first
- * handler call and overrides three entries:
+ * handler call and overrides seven entries:
  *
- *   tuple_insert       -> epistemic_tuple_insert_impl (this file)
- *   multi_insert       -> epistemic_multi_insert       (this file, F18)
- *   relation_toast_am  -> epistemic_relation_toast_am_impl
+ *   tuple_insert              -> epistemic_tuple_insert_impl (this file)
+ *   multi_insert              -> epistemic_multi_insert       (this file, F18)
+ *   tuple_update              -> epistemic_tuple_update       (this file, F20)
+ *   tuple_delete              -> epistemic_tuple_delete       (this file, F20)
+ *   tuple_insert_speculative  -> epistemic_tuple_insert_speculative (F21)
+ *   tuple_complete_speculative-> epistemic_tuple_complete_speculative (F21)
+ *   relation_toast_am         -> epistemic_relation_toast_am_impl
  *
- * Every other callback (~37 of them: scan, index-fetch, tuple_update,
- * tuple_delete, tuple_lock, vacuum_rel, relation_size, freeze_lp,
- * TOAST helpers, parallel scan, sampling, ...) is heap's. Rows on
- * disk are plain heap tuples.
+ * Every other callback (~35 of them: scan, index-fetch, tuple_lock,
+ * vacuum_rel, relation_size, freeze_lp, TOAST helpers, parallel scan,
+ * sampling, ...) is heap's. Rows on disk are plain heap tuples.
+ *
+ * F21 closes the speculative-insertion write path used by INSERT ... ON
+ * CONFLICT. PG 18 REL_18_STABLE routes ON CONFLICT through a two-phase
+ * protocol at src/backend/executor/nodeModifyTable.c:1189-1216:
+ * table_tuple_insert_speculative writes the row with a speculative token
+ * (dispatch: access/tableam.h:513-519), ExecInsertIndexTuples probes
+ * arbiter indexes for a conflict, then table_tuple_complete_speculative
+ * either confirms (succeeded=true -> heap_finish_speculative) or kills
+ * (succeeded=false -> heap_abort_speculative) the tuple (dispatch:
+ * access/tableam.h:521-525; heap bodies at heapam_handler.c:262-300).
+ * Before F21 the AM inherited heapam_tuple_insert_speculative and
+ * heapam_tuple_complete_speculative verbatim (heapam_handler.c:2639-2640),
+ * so an INSERT ... ON CONFLICT that reached the speculative path would
+ * bypass R1..R5, the advisory lock, the precedence lattice, and the
+ * eviction audit. The attack surface is not currently reachable from
+ * SQL because epistemic tables cannot host a unique or exclusion
+ * constraint (heap_getnext at heapam.c:1352 REL_18_STABLE rejects
+ * non-heap rd_tableam during ambuild), so CREATE UNIQUE INDEX,
+ * ADD PRIMARY KEY, ADD UNIQUE, and ADD EXCLUDE all fail on epistemic
+ * relations, which in turn means ON CONFLICT (col) has no arbiter to
+ * bind. The F21 overrides are defensive: the unbypassability claim
+ * must not depend on that accidental index-support gap persisting.
+ * See scripts/speculative_forgery.sh for the SQL-level probe that
+ * confirms the SQL-unreachability today; the C-level programmatic test
+ * (sql/am_speculative.sql) proves the overrides are load-bearing.
+ *
+ * Design of the two-phase interaction:
+ *   * tuple_insert_speculative runs R1..R5, takes the F6 advisory xact
+ *     lock, runs the overlap+precedence check, and delegates the write
+ *     to heapam so the row appears with its speculative token. If the
+ *     precedence check would have evicted an incumbent, the (loser_tid,
+ *     reason) tuple is stashed in a backend-local pending-eviction slot
+ *     keyed by specToken.
+ *   * tuple_complete_speculative delegates to heap unconditionally. If
+ *     succeeded=true, and a pending eviction was stashed for this
+ *     specToken, the audit row is written and the incumbent's sys_time
+ *     is closed. If succeeded=false, the pending eviction is discarded;
+ *     heap_abort_speculative removed the winner tuple, so there is
+ *     nothing to evict against. The advisory lock stays held across
+ *     both calls (xact-scope) and is released at outer-transaction
+ *     commit/abort.
+ *
+ * The pending-eviction slot is a single-entry static because a backend
+ * completes one speculative insertion at a time (ExecInsert at
+ * nodeModifyTable.c:1189-1216 acquires SpeculativeInsertionLockAcquire,
+ * runs both callbacks, and releases; no interleaving with another
+ * speculative in the same backend), and specTokens are unique per
+ * transaction (SpeculativeInsertionLockAcquire in lmgr.c generates
+ * them from GetCurrentTransactionId + an increasing counter).
+ *
+ * F20 closes two write paths that F1--F19 missed: UPDATE that rewrites the
+ * epistemic prefix (kind/specificity/confidence), and DELETE that removes
+ * the incumbent so a subsequent INSERT lands unopposed. Before F20 the AM
+ * inherited heapam_tuple_update and heapam_tuple_delete verbatim, so both
+ * write paths reached heap_update/heap_delete without R1..R5, without the
+ * per-slot advisory lock, without the precedence lattice, and without the
+ * eviction audit. The reproduction lives in scripts/update_forgery.sh and
+ * scripts/delete_forgery.sh; see DECISIONS.md (F20) for the rationale on
+ * why the fix rejects prefix-changing UPDATEs and rejects DELETE outright
+ * rather than trying to reuse the tuple_insert enforcement path.
  *
  * The multi_insert override is the F18 fix for F9's COPY bypass. PG 18's
  * CopyFrom (copyfrom.c:554-559 REL_18_STABLE) routes CIM_MULTI batches
@@ -99,10 +162,59 @@ static void epistemic_multi_insert(Relation rel, TupleTableSlot **slots,
 								   int nslots, CommandId cid, int options,
 								   struct BulkInsertStateData *bistate);
 
+static TM_Result epistemic_tuple_update(Relation rel, ItemPointer otid,
+										TupleTableSlot *slot, CommandId cid,
+										Snapshot snapshot, Snapshot crosscheck,
+										bool wait, TM_FailureData *tmfd,
+										LockTupleMode *lockmode,
+										TU_UpdateIndexes *update_indexes);
+
+static TM_Result epistemic_tuple_delete(Relation rel, ItemPointer tid,
+										CommandId cid, Snapshot snapshot,
+										Snapshot crosscheck, bool wait,
+										TM_FailureData *tmfd,
+										bool changingPart);
+
+/*
+ * F21: speculative-insertion callbacks. Signatures verbatim from PG 18
+ * access/tableam.h:513-525 REL_18_STABLE.
+ */
+static void epistemic_tuple_insert_speculative(Relation rel,
+											   TupleTableSlot *slot,
+											   CommandId cid,
+											   int options,
+											   struct BulkInsertStateData *bistate,
+											   uint32 specToken);
+
+static void epistemic_tuple_complete_speculative(Relation rel,
+												 TupleTableSlot *slot,
+												 uint32 specToken,
+												 bool succeeded);
+
 static void epistemic_audit_evicted(Relation rel, ItemPointer loser_tid,
 									ItemPointer winner_tid,
 									EpistemicPrecedenceReason reason);
 static void epistemic_close_sys_time(Relation rel, ItemPointer loser_tid);
+
+/*
+ * F21 pending-eviction slot. Set by tuple_insert_speculative when the
+ * precedence check produced an eviction; consumed by
+ * tuple_complete_speculative on succeeded=true; cleared on
+ * succeeded=false. Single-entry because a backend performs at most one
+ * speculative insertion at a time (see nodeModifyTable.c:1189-1216
+ * REL_18_STABLE for the caller's linear flow).
+ */
+typedef struct EpistemicPendingSpecEviction
+{
+	bool			active;
+	uint32			specToken;
+	Relation		rel;			/* borrowed; only valid until complete */
+	ItemPointerData	loser_tid;
+	EpistemicPrecedenceReason reason;
+	EpistemicMeta	new_prefix;
+} EpistemicPendingSpecEviction;
+
+static EpistemicPendingSpecEviction epistemic_pending_spec = { .active = false };
 
 /*
  * TOAST tables for epistemic relations are plain heap. Otherwise the TOAST
@@ -615,6 +727,224 @@ epistemic_multi_insert(Relation rel, TupleTableSlot **slots, int nslots,
 }
 
 /*
+ * tuple_update callback (F20). Signature verbatim from PG 18
+ * src/include/access/tableam.h:718-727 REL_18_STABLE:
+ *
+ *   TM_Result (*tuple_update) (Relation rel,
+ *                              ItemPointer otid,
+ *                              TupleTableSlot *slot,
+ *                              CommandId cid,
+ *                              Snapshot snapshot,
+ *                              Snapshot crosscheck,
+ *                              bool wait,
+ *                              TM_FailureData *tmfd,
+ *                              LockTupleMode *lockmode,
+ *                              TU_UpdateIndexes *update_indexes);
+ *
+ * Policy: allow UPDATEs that change ordinary user columns (value,
+ * valid_time, sources) but refuse any UPDATE that alters the epistemic
+ * prefix (ep_kind, ep_specificity, ep_confidence). The prefix records
+ * the write-time epistemic act as the engine classified it; rewriting
+ * that prefix after commit forges the record of that act, and no
+ * plausible content-correction workflow needs it. Legitimate content
+ * changes that must alter the prefix should go through INSERT of a new
+ * row and let the precedence lattice + eviction audit fire.
+ *
+ * Naive alternative: re-run epistemic_tuple_insert_impl's enforcement
+ * on the new slot with the incumbent-is-self as the overlap match. That
+ * fails silently: NEW-MEASURED-conf=1.0 beats OLD-INFERRED-conf=0.4 by
+ * kind rank, so the attack SUCCEEDS via legitimate precedence. The only
+ * defensible cut is at the prefix.
+ *
+ * Implementation. Fetch the incumbent tuple at otid, extract its prefix
+ * with the same extract_prefix helper the insert path uses, and compare
+ * to the candidate slot's prefix. Any difference is ereport'd as
+ * ERRCODE_CHECK_VIOLATION. If the prefix is unchanged, delegate to
+ * heapam's tuple_update for the actual heap_update, WAL, index
+ * bookkeeping, and TM_Result return.
+ *
+ * We do NOT take the F6 per-slot advisory lock here. UPDATE never
+ * introduces a new (entity_id, attribute) slot; if the user changed the
+ * logical-key columns, the standard heapam update path would produce a
+ * new HOT chain that a subsequent read would find, and the "one live
+ * row per slot" invariant is not our concern on that path — the R5
+ * registry would have flagged the write on the original INSERT anyway.
+ */
+static TM_Result
+epistemic_tuple_update(Relation rel, ItemPointer otid, TupleTableSlot *slot,
+					   CommandId cid, Snapshot snapshot, Snapshot crosscheck,
+					   bool wait, TM_FailureData *tmfd,
+					   LockTupleMode *lockmode,
+					   TU_UpdateIndexes *update_indexes)
+{
+	const TableAmRoutine *heapam;
+	HeapTupleData incumbent_tuple;
+	Buffer		buffer;
+	Snapshot	fetch_snap;
+	TupleDesc	tupdesc;
+	Datum	   *values;
+	bool	   *isnull;
+	EpistemicMeta incumbent;
+	EpistemicMeta candidate;
+	bool		have_incumbent_prefix;
+	bool		have_candidate_prefix;
+
+	tupdesc = RelationGetDescr(rel);
+
+	/*
+	 * Only relations that carry the epistemic prefix are subject to the
+	 * F20 check. A relation created USING epistemic without the required
+	 * three trailing columns is a user schema error caught at insert time;
+	 * on the update path we simply delegate.
+	 */
+	if (tupdesc->natts < EP_ATTR_CONFIDENCE)
+	{
+		heapam = GetHeapamTableAmRoutine();
+		return heapam->tuple_update(rel, otid, slot, cid, snapshot,
+									crosscheck, wait, tmfd, lockmode,
+									update_indexes);
+	}
+
+	ItemPointerCopy(otid, &incumbent_tuple.t_self);
+
+	/*
+	 * GetLatestSnapshot for the fetch: same reasoning as
+	 * epistemic_close_sys_time. The statement snapshot is stale relative to
+	 * any concurrent committer; snapmgr.c:353-376 REL_18_STABLE refreshes
+	 * SecondarySnapshot.
+	 */
+	fetch_snap = GetLatestSnapshot();
+	if (!heap_fetch(rel, fetch_snap, &incumbent_tuple, &buffer, false))
+	{
+		/*
+		 * Row is gone (concurrent DELETE, HOT prune, VACUUM). Delegate
+		 * to heapam so it returns the standard TM_Deleted / TM_Updated
+		 * TM_Result. No prefix comparison is meaningful.
+		 */
+		heapam = GetHeapamTableAmRoutine();
+		return heapam->tuple_update(rel, otid, slot, cid, snapshot,
+									crosscheck, wait, tmfd, lockmode,
+									update_indexes);
+	}
+
+	values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
+	isnull = (bool *) palloc0(tupdesc->natts * sizeof(bool));
+	heap_deform_tuple(&incumbent_tuple, tupdesc, values, isnull);
+
+	incumbent.ep_flags = 0;
+	if (isnull[EP_ATTR_KIND - 1])
+	{
+		ReleaseBuffer(buffer);
+		pfree(values);
+		pfree(isnull);
+		ereport(ERROR,
+				(errcode(ERRCODE_CHECK_VIOLATION),
+				 errmsg("epistemic update: incumbent has NULL ep_kind"),
+				 errdetail("Refusing UPDATE against a row missing its epistemic prefix.")));
+	}
+	incumbent.ep_kind = (uint8) DatumGetChar(values[EP_ATTR_KIND - 1]);
+	incumbent.ep_specificity = isnull[EP_ATTR_SPECIFICITY - 1] ? 0
+		: (uint16) DatumGetInt16(values[EP_ATTR_SPECIFICITY - 1]);
+	incumbent.ep_confidence = isnull[EP_ATTR_CONFIDENCE - 1] ? 1.0f
+		: DatumGetFloat4(values[EP_ATTR_CONFIDENCE - 1]);
+
+	ReleaseBuffer(buffer);
+	pfree(values);
+	pfree(isnull);
+
+	have_incumbent_prefix = true;
+	have_candidate_prefix = extract_prefix(slot, &candidate);
+
+	if (!have_candidate_prefix)
+	{
+		/*
+		 * Candidate slot lost its prefix columns during projection. This is
+		 * a schema mismatch we cannot allow to slip past.
+		 */
+		ereport(ERROR,
+				(errcode(ERRCODE_CHECK_VIOLATION),
+				 errmsg("epistemic update: candidate slot missing epistemic prefix"),
+				 errdetail("Refusing UPDATE that would drop ep_kind, ep_specificity, or ep_confidence.")));
+	}
+
+	if (have_incumbent_prefix &&
+		(incumbent.ep_kind != candidate.ep_kind ||
+		 incumbent.ep_specificity != candidate.ep_specificity ||
+		 incumbent.ep_confidence != candidate.ep_confidence))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_CHECK_VIOLATION),
+				 errmsg("epistemic update: refusing to alter the epistemic prefix"),
+				 errdetail("Incumbent prefix (ep_kind=%d, ep_specificity=%u, ep_confidence=%g) "
+						   "differs from candidate (ep_kind=%d, ep_specificity=%u, ep_confidence=%g).",
+						   incumbent.ep_kind, incumbent.ep_specificity, incumbent.ep_confidence,
+						   candidate.ep_kind, candidate.ep_specificity, candidate.ep_confidence),
+				 errhint("The epistemic prefix records the write-time act as the engine classified it. "
+						 "To change the recorded kind/specificity/confidence, INSERT a new row and let "
+						 "the precedence lattice rank it against the incumbent.")));
+	}
+
+	heapam = GetHeapamTableAmRoutine();
+	return heapam->tuple_update(rel, otid, slot, cid, snapshot,
+								crosscheck, wait, tmfd, lockmode,
+								update_indexes);
+}
+
+/*
+ * tuple_delete callback (F20). Signature verbatim from PG 18
+ * src/include/access/tableam.h:709-716 REL_18_STABLE:
+ *
+ *   TM_Result (*tuple_delete) (Relation rel,
+ *                              ItemPointer tid,
+ *                              CommandId cid,
+ *                              Snapshot snapshot,
+ *                              Snapshot crosscheck,
+ *                              bool wait,
+ *                              TM_FailureData *tmfd,
+ *                              bool changingPart);
+ *
+ * Policy: refuse DELETE outright on epistemic tables. A DELETE removes a
+ * row from the "one live row per slot" invariant without going through the
+ * eviction audit path, and the F20 reproduction (scripts/delete_forgery.sh)
+ * shows this lets an adversary turn a MEASURED incumbent into an unopposed
+ * INFERRED forgery. A dedicated eviction API can layer atop this policy
+ * later; the immediate correctness fix is to reject the write path.
+ *
+ * changingPart is set when DELETE is issued as the first half of a
+ * cross-partition UPDATE on a partitioned table (nodeModifyTable.c wants
+ * to remove the old-partition row and insert into the new). We do not
+ * distinguish that case here: partitioned epistemic tables are out of
+ * scope for the PoC (the AM handler is not inheritable across
+ * partitions in PG 18 anyway).
+ */
+static TM_Result
+epistemic_tuple_delete(Relation rel, ItemPointer tid, CommandId cid,
+					   Snapshot snapshot, Snapshot crosscheck, bool wait,
+					   TM_FailureData *tmfd, bool changingPart)
+{
+	(void) rel;
+	(void) tid;
+	(void) cid;
+	(void) snapshot;
+	(void) crosscheck;
+	(void) wait;
+	(void) tmfd;
+	(void) changingPart;
+
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("epistemic delete: DELETE from an epistemic table is not supported"),
+			 errdetail("Physically removing a row bypasses the precedence lattice and the eviction audit."),
+			 errhint("The eviction path fires automatically on INSERT when a losing incumbent is superseded. "
+					 "For explicit retirement of a fact, INSERT a superseding row of the same kind/specificity "
+					 "with higher confidence, or extend the API with a bookkeeping wrapper that closes "
+					 "sys_time and writes an audit row.")));
+
+	/* NOTREACHED */
+	return TM_Ok;
+}
+
+/*
  * Insert one row into epistemic.evicted_fact describing the incumbent
  * that lost the precedence comparison. Uses SPI so the JSONB payload is
  * built by to_jsonb on the live server row rather than reconstructed
@@ -783,8 +1113,248 @@ epistemic_close_sys_time(Relation rel, ItemPointer loser_tid)
 }
 
 /*
+ * tuple_insert_speculative callback (F21). Signature verbatim from PG 18
+ * src/include/access/tableam.h:513-519 REL_18_STABLE:
+ *
+ *   void (*tuple_insert_speculative) (Relation rel,
+ *                                     TupleTableSlot *slot,
+ *                                     CommandId cid,
+ *                                     int options,
+ *                                     struct BulkInsertStateData *bistate,
+ *                                     uint32 specToken);
+ *
+ * Runs the full epistemic write-time enforcement on the candidate:
+ *   1. R1..R5 rule check
+ *   2. F6 per-slot advisory xact lock
+ *   3. find_live_overlap + precedence compare (with F8 xmin tiebreak)
+ *   4. delegate to heapam's speculative-insert body so the row lands
+ *      with its HEAP_INSERT_SPECULATIVE marker
+ *   5. if precedence produced an eviction, stash (loser_tid, reason)
+ *      into epistemic_pending_spec keyed by specToken; the actual
+ *      audit-row + sys_time close is deferred to
+ *      epistemic_tuple_complete_speculative(succeeded=true).
+ *
+ * Why defer eviction bookkeeping. The speculative row can be aborted at
+ * tuple_complete_speculative(succeeded=false) if ExecInsertIndexTuples
+ * at nodeModifyTable.c:1199 sees an arbiter conflict. If we wrote the
+ * audit row and closed the incumbent's sys_time here, and the
+ * speculative row were then killed by heap_abort_speculative
+ * (heapam.c:6186 REL_18_STABLE), the store would be left with a
+ * closed-sys_time incumbent and no winner — corruption. Deferring the
+ * bookkeeping keeps atomicity honest: eviction lands iff the winner
+ * lands.
+ *
+ * The F6 advisory lock stays held across both callbacks. It is
+ * xact-scope (LockAcquire with sessionLock=false) so it is released at
+ * outer-transaction commit or abort, not at speculative-complete.
+ */
+static void
+epistemic_tuple_insert_speculative(Relation rel, TupleTableSlot *slot,
+								   CommandId cid, int options,
+								   struct BulkInsertStateData *bistate,
+								   uint32 specToken)
+{
+	EpistemicRule rule;
+	int32		entity_id = 0;
+	const char *attribute = NULL;
+	RangeType  *valid_time = NULL;
+	int64		valid_lower_secs = 0;
+	int64		valid_upper_secs = 0;
+	bool		have_key;
+	EpistemicMeta new_prefix;
+	bool		have_new_prefix;
+	const TableAmRoutine *heapam;
+	bool		have_eviction = false;
+	ItemPointerData loser_tid;
+	EpistemicCmpResult cmp = { EP_CMP_NEW_WINS, EP_REASON_NONE };
+
+	/* Step 1: R1..R5. */
+	rule = epistemic_check_rules(rel, slot);
+	if (rule != EP_RULE_NONE)
+		ereport(ERROR,
+				(errcode(ERRCODE_CHECK_VIOLATION),
+				 errmsg("epistemic write-time rule violation: %s",
+						epistemic_rule_label(rule))));
+
+	have_key = extract_logical_key(slot, &entity_id, &attribute, &valid_time,
+								   &valid_lower_secs, &valid_upper_secs);
+	have_new_prefix = extract_prefix(slot, &new_prefix);
+
+	/* Step 2: F6 advisory xact lock. See the tuple_insert path for the
+	 * full rationale — same tag construction, same mode. */
+	if (have_key)
+	{
+		LOCKTAG		tag;
+		int32		attr_hash;
+
+		attr_hash = (int32) hash_bytes((const unsigned char *) attribute,
+									   (int) strlen(attribute));
+		SET_LOCKTAG_ADVISORY(tag, MyDatabaseId, (uint32) entity_id,
+							 (uint32) attr_hash, 2);
+		(void) LockAcquire(&tag, ExclusiveLock, false, false);
+	}
+
+	(void) valid_lower_secs;
+	(void) valid_upper_secs;
+
+	/* Step 3: overlap scan + precedence. */
+	if (have_key && have_new_prefix)
+	{
+		EpistemicMeta incumbent;
+		TransactionId incumbent_xmin = InvalidTransactionId;
+
+		if (find_live_overlap(rel, entity_id, attribute, valid_time,
+							  &loser_tid, &incumbent, &incumbent_xmin))
+		{
+			cmp = epistemic_precedence_cmp(&incumbent, &new_prefix);
+
+			if (cmp.outcome == EP_CMP_NEW_WINS &&
+				cmp.reason == EP_REASON_CONTRADICTED_SAME_RANK)
+			{
+				TransactionId new_xid = GetCurrentTransactionId();
+
+				if (TransactionIdIsValid(incumbent_xmin) &&
+					TransactionIdPrecedes(incumbent_xmin, new_xid))
+				{
+					cmp.outcome = EP_CMP_NEW_LOSES;
+				}
+			}
+
+			if (cmp.outcome == EP_CMP_NEW_LOSES)
+				ereport(ERROR,
+						(errcode(ERRCODE_CHECK_VIOLATION),
+						 errmsg("epistemic precedence: NEW_LOSES (reason=%s)",
+								epistemic_precedence_reason_label(cmp.reason))));
+
+			have_eviction = true;
+		}
+	}
+
+	/*
+	 * Step 4: delegate the speculative write to heapam. This flags the
+	 * tuple with HEAP_INSERT_SPECULATIVE and stamps the specToken via
+	 * HeapTupleHeaderSetSpeculativeToken (heapam_handler.c:274 REL_18_STABLE)
+	 * so concurrent scanners can wait for our decision.
+	 */
+	heapam = GetHeapamTableAmRoutine();
+	heapam->tuple_insert_speculative(rel, slot, cid, options, bistate,
+									 specToken);
+
+	/*
+	 * Step 5: stash the pending eviction. Do NOT run the audit-row insert
+	 * or the sys_time close here; that must be deferred to
+	 * tuple_complete_speculative(succeeded=true) so we do not corrupt
+	 * the store if the arbiter check later kills the speculative row.
+	 *
+	 * We assert the pending slot is empty. If it were not, a caller
+	 * broke the "one speculative at a time per backend" invariant
+	 * (ExecInsert at nodeModifyTable.c:1189-1216 REL_18_STABLE holds
+	 * SpeculativeInsertionLockAcquire across both calls, so the invariant
+	 * holds for normal ON CONFLICT execution).
+	 */
+	if (epistemic_pending_spec.active)
+		elog(WARNING,
+			 "epistemic: pending speculative eviction slot already active "
+			 "(prevToken=%u, newToken=%u); overwriting",
+			 epistemic_pending_spec.specToken, specToken);
+
+	epistemic_pending_spec.active = have_eviction;
+	if (have_eviction)
+	{
+		epistemic_pending_spec.specToken = specToken;
+		epistemic_pending_spec.rel = rel;
+		ItemPointerCopy(&loser_tid, &epistemic_pending_spec.loser_tid);
+		epistemic_pending_spec.reason = cmp.reason;
+		epistemic_pending_spec.new_prefix = new_prefix;
+	}
+}
+
+/*
+ * tuple_complete_speculative callback (F21). Signature verbatim from PG 18
+ * src/include/access/tableam.h:521-525 REL_18_STABLE:
+ *
+ *   void (*tuple_complete_speculative) (Relation rel,
+ *                                       TupleTableSlot *slot,
+ *                                       uint32 specToken,
+ *                                       bool succeeded);
+ *
+ * Delegates the tuple confirm/abort to heapam unconditionally (heap
+ * either calls heap_finish_speculative at heapam.c:6099 REL_18_STABLE to
+ * strip the speculative marker, or heap_abort_speculative at
+ * heapam.c:6186 to super-delete the tuple).
+ *
+ * If our tuple_insert_speculative stashed a pending eviction for this
+ * specToken:
+ *   * succeeded=true: write the audit row, close the incumbent's
+ *     sys_time upper bound, emit the WAL annotation. Same three steps
+ *     the plain tuple_insert path runs for its post-insert bookkeeping.
+ *   * succeeded=false: discard the pending state. heap_abort_speculative
+ *     already removed the winner tuple, so there is nothing to evict.
+ *
+ * On succeeded=false with no pending eviction the callback is a pure
+ * delegate; no epistemic state was accumulated to unwind.
+ */
+static void
+epistemic_tuple_complete_speculative(Relation rel, TupleTableSlot *slot,
+									 uint32 specToken, bool succeeded)
+{
+	const TableAmRoutine *heapam;
+	bool		had_pending;
+	ItemPointerData winner_tid;
+
+	heapam = GetHeapamTableAmRoutine();
+
+	/*
+	 * Capture the winner's tid BEFORE the delegate: on succeeded=false
+	 * heap_abort_speculative marks the tuple dead but the tid stays
+	 * bound to slot->tts_tid; on succeeded=true heap_finish_speculative
+	 * does not move the tuple either. So it is safe to read tts_tid
+	 * before OR after. We capture it before purely for readability.
+	 */
+	ItemPointerCopy(&slot->tts_tid, &winner_tid);
+
+	heapam->tuple_complete_speculative(rel, slot, specToken, succeeded);
+
+	had_pending = (epistemic_pending_spec.active &&
+				   epistemic_pending_spec.specToken == specToken);
+
+	if (!had_pending)
+		return;
+
+	/* One-shot slot: whatever the outcome, clear it. */
+	epistemic_pending_spec.active = false;
+
+	if (!succeeded)
+	{
+		/*
+		 * heap_abort_speculative removed the winner. The incumbent
+		 * survives untouched (we never touched it). Nothing to do.
+		 */
+		return;
+	}
+
+	/*
+	 * succeeded=true: winner tuple is now durable. Run the deferred
+	 * eviction bookkeeping. Same three steps the plain tuple_insert
+	 * path runs at its "have_eviction" branch: audit row, sys_time
+	 * close, WAL annotation.
+	 */
+	epistemic_audit_evicted(rel,
+							&epistemic_pending_spec.loser_tid,
+							&winner_tid,
+							epistemic_pending_spec.reason);
+	epistemic_close_sys_time(rel, &epistemic_pending_spec.loser_tid);
+	CommandCounterIncrement();
+
+	if (ItemPointerIsValid(&winner_tid))
+		(void) epistemic_wal_log_insert_marker(rel, &winner_tid,
+											   &epistemic_pending_spec.new_prefix);
+}
+
+/*
  * Handler entry point. Copies heapam's TableAmRoutine on first call and
- * overrides tuple_insert.
+ * overrides seven entries (F21 added tuple_insert_speculative and
+ * tuple_complete_speculative).
  */
 Datum
 epistemic_am_handler(PG_FUNCTION_ARGS)
@@ -797,6 +1367,12 @@ epistemic_am_handler(PG_FUNCTION_ARGS)
 		epistemic_am_methods.type = T_TableAmRoutine;
 		epistemic_am_methods.tuple_insert = epistemic_tuple_insert_impl;
 		epistemic_am_methods.multi_insert = epistemic_multi_insert;
+		epistemic_am_methods.tuple_update = epistemic_tuple_update;
+		epistemic_am_methods.tuple_delete = epistemic_tuple_delete;
+		epistemic_am_methods.tuple_insert_speculative =
+			epistemic_tuple_insert_speculative;
+		epistemic_am_methods.tuple_complete_speculative =
+			epistemic_tuple_complete_speculative;
 		epistemic_am_methods.relation_toast_am = epistemic_relation_toast_am_impl;
 		epistemic_am_methods_initialized = true;
 	}

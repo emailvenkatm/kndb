@@ -1,0 +1,66 @@
+-- am_update_delete.sql: F20 UPDATE / DELETE rejection.
+--
+-- Exercises epistemic_tuple_update (rejects any change to the epistemic
+-- prefix) and epistemic_tuple_delete (rejects DELETE outright) on the
+-- native AM path. Companion of scripts/update_forgery.sh and
+-- scripts/delete_forgery.sh; those two scripts run a full attack cycle
+-- against a fresh cluster, while this regression test exercises the
+-- callbacks under `make installcheck` on an existing cluster.
+CREATE EXTENSION IF NOT EXISTS epistemic;
+NOTICE:  extension "epistemic" already exists, skipping
+INSERT INTO epistemic.source_registry (source_id, source_type)
+VALUES ('s_upd', 'test')
+ON CONFLICT DO NOTHING;
+CREATE TABLE fact_upd_del (
+    entity_id     int NOT NULL,
+    attribute     text NOT NULL,
+    value         text,
+    sources       text[],
+    valid_time    tstzrange,
+    sys_time      tstzrange DEFAULT tstzrange(now(), 'infinity'),
+    ep_kind       epistemic.epistemic_kind NOT NULL,
+    ep_specificity int2 NOT NULL DEFAULT 0,
+    ep_confidence real NOT NULL DEFAULT 1.0
+) USING epistemic;
+-- Seed with a legitimate INFERRED row.
+INSERT INTO fact_upd_del (entity_id, attribute, value, sources, valid_time,
+                          ep_kind, ep_specificity, ep_confidence)
+VALUES (1, 'bp', 'benign', ARRAY['s_upd'],
+        tstzrange('2026-01-01', 'infinity'),
+        'INFERRED', 10, 0.4);
+-- UPDATE that touches ONLY user columns (value): must succeed.
+UPDATE fact_upd_del SET value = 'benign v2'
+ WHERE entity_id = 1 AND attribute = 'bp';
+-- UPDATE that changes ep_kind: must be rejected (F20).
+UPDATE fact_upd_del SET ep_kind = 'MEASURED'::epistemic.epistemic_kind
+ WHERE entity_id = 1 AND attribute = 'bp';
+ERROR:  epistemic update: refusing to alter the epistemic prefix
+DETAIL:  Incumbent prefix (ep_kind=1, ep_specificity=10, ep_confidence=0.4) differs from candidate (ep_kind=0, ep_specificity=10, ep_confidence=0.4).
+HINT:  The epistemic prefix records the write-time act as the engine classified it. To change the recorded kind/specificity/confidence, INSERT a new row and let the precedence lattice rank it against the incumbent.
+-- UPDATE that changes ep_confidence: must be rejected (F20).
+UPDATE fact_upd_del SET ep_confidence = 1.0
+ WHERE entity_id = 1 AND attribute = 'bp';
+ERROR:  epistemic update: refusing to alter the epistemic prefix
+DETAIL:  Incumbent prefix (ep_kind=1, ep_specificity=10, ep_confidence=0.4) differs from candidate (ep_kind=1, ep_specificity=10, ep_confidence=1).
+HINT:  The epistemic prefix records the write-time act as the engine classified it. To change the recorded kind/specificity/confidence, INSERT a new row and let the precedence lattice rank it against the incumbent.
+-- UPDATE that changes ep_specificity: must be rejected (F20).
+UPDATE fact_upd_del SET ep_specificity = 20
+ WHERE entity_id = 1 AND attribute = 'bp';
+ERROR:  epistemic update: refusing to alter the epistemic prefix
+DETAIL:  Incumbent prefix (ep_kind=1, ep_specificity=10, ep_confidence=0.4) differs from candidate (ep_kind=1, ep_specificity=20, ep_confidence=0.4).
+HINT:  The epistemic prefix records the write-time act as the engine classified it. To change the recorded kind/specificity/confidence, INSERT a new row and let the precedence lattice rank it against the incumbent.
+-- DELETE: must be rejected outright (F20).
+DELETE FROM fact_upd_del WHERE entity_id = 1 AND attribute = 'bp';
+ERROR:  epistemic delete: DELETE from an epistemic table is not supported
+DETAIL:  Physically removing a row bypasses the precedence lattice and the eviction audit.
+HINT:  The eviction path fires automatically on INSERT when a losing incumbent is superseded. For explicit retirement of a fact, INSERT a superseding row of the same kind/specificity with higher confidence, or extend the API with a bookkeeping wrapper that closes sys_time and writes an audit row.
+-- Verify the seed row is intact (value updated to 'benign v2'; prefix
+-- unchanged; row not removed).
+SELECT entity_id, attribute, value, ep_kind, ep_specificity, ep_confidence
+  FROM fact_upd_del
+ WHERE entity_id = 1 AND attribute = 'bp';
+ entity_id | attribute |   value   | ep_kind  | ep_specificity | ep_confidence 
+-----------+-----------+-----------+----------+----------------+---------------
+         1 | bp        | benign v2 | INFERRED |             10 |           0.4
+(1 row)
+

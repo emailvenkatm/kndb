@@ -77,3 +77,27 @@ CREATE TABLE epistemic.source_registry (
     source_type   text NOT NULL,
     added_at      timestamptz NOT NULL DEFAULT clock_timestamp()
 );
+
+-- F21 test-only probe. Directly invokes table_tuple_insert_speculative
+-- and table_tuple_complete_speculative on the target relation with a
+-- caller-supplied candidate tuple. The SQL-level ON CONFLICT path is
+-- not reachable on epistemic tables today (unique/exclusion index
+-- creation fails at heap_getnext's rd_tableam identity check,
+-- heapam.c:1352 REL_18_STABLE), so this probe is the only way to
+-- exercise the F21 speculative-insertion callbacks. Used by
+-- sql/am_speculative.sql to prove the R-checks fire on the speculative
+-- path and to run the disable-and-test rebuild loop.
+CREATE FUNCTION epistemic._probe_speculative_insert(
+    relname         text,
+    entity_id       int,
+    attribute       text,
+    value           text,
+    sources         text[],
+    valid_time      tstzrange,
+    ep_kind         epistemic.epistemic_kind,
+    ep_specificity  int2,
+    ep_confidence   real,
+    succeeded       bool DEFAULT true
+) RETURNS text
+    AS 'MODULE_PATHNAME', 'epistemic_probe_speculative_insert'
+    LANGUAGE C;

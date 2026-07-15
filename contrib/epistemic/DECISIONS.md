@@ -4,6 +4,199 @@ Short notes recording load-bearing design choices and, where useful, the
 audit that produced them. New entries go on top. Each entry is dated and
 identifies the code paths involved.
 
+## 2026-07-12, F21: close the INSERT..ON CONFLICT speculative bypass
+
+F20 closed the UPDATE and DELETE bypasses. F21 audits the remaining
+mutating write path: `INSERT ... ON CONFLICT`. PG 18 REL_18_STABLE
+routes ON CONFLICT through a two-phase protocol at
+src/backend/executor/nodeModifyTable.c:1189-1216:
+
+```
+specToken = SpeculativeInsertionLockAcquire(GetCurrentTransactionId());
+table_tuple_insert_speculative(rel, slot, cid, 0, NULL, specToken);
+                                       [tableam.h:513-519]
+ExecInsertIndexTuples(..., &specConflict, arbiterIndexes, false);
+table_tuple_complete_speculative(rel, slot, specToken, !specConflict);
+                                       [tableam.h:521-525]
+SpeculativeInsertionLockRelease(GetCurrentTransactionId());
+```
+
+Heap's implementations at heapam_handler.c:263-300: the "insert"
+phase writes the tuple via heap_insert with HEAP_INSERT_SPECULATIVE and
+stamps HeapTupleHeaderSetSpeculativeToken; the "complete" phase either
+calls heap_finish_speculative at heapam.c:6099 to strip the marker or
+heap_abort_speculative at heapam.c:6186 to super-delete the tuple.
+
+Before F21, our AM inherited both heapam_tuple_insert_speculative and
+heapam_tuple_complete_speculative verbatim (heapam_handler.c:2639-2640
+in the heapam_methods block). So an `INSERT ... ON CONFLICT DO UPDATE`
+or `DO NOTHING` that reached the speculative path would bypass R1..R5,
+the F6 advisory lock, precedence, F8 tiebreak, and the eviction audit
+--- exact bug class of F9 (COPY), F18 (multi_insert), F20 (UPDATE /
+DELETE).
+
+Empirical reachability check (scripts/speculative_forgery.sh, step 1):
+
+  * Attempted attack: seed MEASURED/1.0 at (42,'bp'), then INSERT an
+    INFERRED/0.99 with `ON CONFLICT (entity_id, attribute) DO UPDATE
+    SET ep_kind='INFERRED', ep_confidence=0.99, value='forged'`.
+  * Result: the CREATE UNIQUE INDEX prerequisite FAILS with
+      ERROR: only heap AM is supported
+    from heap_getnext at heapam.c:1352 REL_18_STABLE, which asserts
+    `rd_tableam == GetHeapamTableAmRoutine()`. That kills btree's
+    ambuild scan phase. Same happens for ADD PRIMARY KEY, ADD UNIQUE,
+    ADD EXCLUDE via btree_gist. No arbiter index can be created on an
+    epistemic-AM table, so ON CONFLICT (col) has no arbiter to bind.
+  * The ON CONFLICT DO UPDATE with no arbiter and DO NOTHING with no
+    arbiter both trip PG's `there is no unique or exclusion constraint
+    matching the ON CONFLICT specification` at
+    parse_clause.c and never enter ExecInsert.
+  * Bare ON CONFLICT DO NOTHING (no target column list) with no
+    arbiter degenerates: ExecInsert takes the plain tuple_insert path
+    (line 1234, not the speculative branch at line 1189), which is
+    already covered by our tuple_insert override.
+
+Interim finding at F21 step 1: the SQL surface for this bypass is
+CURRENTLY UNREACHABLE. Today's protection is an accidental byproduct
+of the same index-support gap that drives the ~71% overhead F9
+documented against pg_heap. That gap could close in the future (e.g.,
+an operator patches heap_getnext to accept our AM, or a future TAM
+patch allows non-heap index-supporting AMs). The engine-in-storage
+claim must not depend on it.
+
+Design of the two-phase interaction (F21 step 2):
+
+  * tuple_insert_speculative runs R1..R5, F6 advisory lock, precedence
+    (with F8 xmin tiebreak). If NEW_LOSES, ereport before the write;
+    heap never sees the row. If NEW_WINS with an eviction, stash
+    (loser_tid, reason, new_prefix) into a single-entry backend-local
+    slot keyed by specToken. Then delegate the actual speculative
+    write to heapam->tuple_insert_speculative so the row is stamped
+    with HEAP_INSERT_SPECULATIVE and the caller's specToken.
+  * tuple_complete_speculative delegates to heap unconditionally. If
+    the pending slot matches specToken AND succeeded=true, drain the
+    slot into audit + sys_time close + rmgr-128 marker. If
+    succeeded=false, discard the slot; heap_abort_speculative already
+    removed the winner tuple.
+  * F6 advisory lock is xact-scope. Stays held across both callbacks;
+    released at outer-txn commit/abort, not at speculative-complete.
+
+Why defer eviction bookkeeping. If we wrote the audit row and closed
+the incumbent's sys_time in tuple_insert_speculative and the
+speculative row were then killed by heap_abort_speculative (arbiter
+conflict), the store would have an evicted incumbent and no winner ---
+worse than the bypass we are closing. Two-phase deferral keeps
+atomicity honest: eviction lands iff the winner lands.
+
+Single-entry pending slot is safe. ExecInsert at nodeModifyTable.c:
+1189-1216 holds SpeculativeInsertionLockAcquire across BOTH calls, so
+one backend performs at most one speculative insertion at a time.
+specTokens are unique per transaction.
+
+C-level programmatic disable-and-test. Since SQL cannot reach the
+speculative callbacks today, the load-bearing proof needs a C-level
+probe. Added `epistemic._probe_speculative_insert` at
+`src/epistemic_probe.c` (183 lines) and registered in
+`epistemic--1.0.sql`; signature:
+
+    epistemic._probe_speculative_insert(
+        relname text, entity_id int, attribute text, value text,
+        sources text[], valid_time tstzrange,
+        ep_kind epistemic.epistemic_kind,
+        ep_specificity int2, ep_confidence real,
+        succeeded bool DEFAULT true
+    ) RETURNS text
+
+The probe opens the relation, constructs a slot from the args, and
+invokes `table_tuple_insert_speculative` + `table_tuple_complete_
+speculative` in sequence with a synthetic specToken (0xdeadbeef).
+Regression cell: `sql/am_speculative.sql` (7 cases: valid MEASURED,
+R3 violation, valid INFERRED, R4 violation, precedence NEW_LOSES,
+precedence NEW_WINS with deferred eviction, and speculative-abort with
+a would-be eviction that must be discarded).
+
+Adversarial disable-and-test transcript:
+
+  * F21 baseline (both speculative overrides wired ON):
+      sha256 = 959d5e67a16cb0ced254d6f189dccf3a29141199dc8f1f1dcbb39fadae51bc26
+      installcheck: 8/8 (adds am_speculative to the F20 suite of 7).
+      probe R3 attempt: `ERROR: epistemic write-time rule violation:
+        R3 (MEASURED no sources)`. Zero rows land in fact_native.
+      probe R4 attempt: `ERROR: epistemic write-time rule violation:
+        R4 (INFERRED confidence < 1.0)`. Zero rows land.
+      probe succeeded=false with pending eviction: incumbent survives,
+        audit_rows_after_abort = 0 (deferral holds).
+      make check-e2e: PASS 10/10.
+
+  * Patched OFF (two wiring lines in epistemic_am_handler commented out,
+    rebuilt): sha256 = c44b276d7977198d653f097a32de83f174c8e8718fa2c82d5b6816f37f7945c1
+      probe R3 attempt: returns 'OK', one row lands in fact_native.
+        The AM's speculative overrides did not run, so R1..R5 were
+        skipped, and heapam_tuple_insert_speculative wrote the row
+        verbatim.
+      probe R4 attempt: returns 'OK', one row lands.
+      Both forgeries succeed cleanly. This is the bypass F21 closes,
+        exercised against the actual callback rather than an SQL path
+        we cannot construct.
+
+  * Restored (two wiring lines uncommented, byte-identical rebuild):
+      sha256 back to 959d5e67... --- verify_dylib.sh exit 0.
+      probe R3 attempt: back to ERROR: R3 rejection.
+      All installcheck and check-e2e cells back to PASS.
+
+Bypass.sh scenario 6 (F21 speculative probe): added to the e2e suite.
+Runs the probe with an R3-violating MEASURED row and an R4-violating
+INFERRED row; both must be rejected with the expected error string and
+zero rows landing. Under the honest build the cell passes; under the
+patched-OFF rebuild the cell fails (rows land, no error) --- same
+discipline as F18 and F20.
+
+Exhaustive TableAmRoutine audit (F21 step 3). Our anecdotal "these
+callbacks cannot mutate epistemic state" enumeration has now been wrong
+three times: F9 COPY, F20 UPDATE/DELETE, F21 speculative. To convert
+anecdotal enumeration into a completeness argument, F21 enumerates
+every one of the 42 callbacks in access/tableam.h REL_18_STABLE with
+a citable file:line reference and a stated reason why it is either
+overridden or safe to inherit. Classification: 7 OVERRIDDEN,
+17 READ-ONLY (scan/fetch/estimate/planner), 8 DELEGATED-STORAGE (heap
+provides the semantic; any subsequent mutating path re-enters through
+an overridden callback OR is DDL-privileged and disclosed as a
+schema-change threat), 1 DELEGATED-DECIDE
+(relation_needs_toast_table). Two rows in DELEGATED-STORAGE
+--- relation_nontransactional_truncate (TRUNCATE) and
+relation_copy_for_cluster (CLUSTER / VACUUM FULL) --- are HONESTLY
+DISCLOSED as bypasses at the DDL level, on par with SET ACCESS METHOD
+heap; they join Section 9's schema-change threat surface in the paper.
+Table lives at paper-pvldb/figures/tableam_audit.tex; the paper
+`\input`s it as Table 3 (labelled tab:tableam-audit).
+
+Makefile PG_CONFIG pin. F20's post-mortem identified that on macOS
+with both postgresql@17 and postgresql@18 formulae installed, `pg_config`
+resolves to whichever formula was installed first, and PGXS's install
+target then writes the dylib into the WRONG pkglibdir. installcheck
+then loads whatever dylib the wrong PG happens to have. Pinned
+`PG_CONFIG ?= /opt/homebrew/opt/postgresql@18/bin/pg_config` at the top
+of contrib/epistemic/Makefile with `?=` so users on non-Homebrew installs
+can override. The gotcha is now permanently closed for the PG 18 build.
+
+Line counts after F21:
+    src/epistemic_am.c        1382  (was 1051 pre-F21)
+    src/epistemic_init.c        21
+    src/epistemic_probe.c      183  (F21 test-only)
+    src/epistemic_rules.c      467
+    src/epistemic_type.c        59
+    src/epistemic_wal.c        126
+    include/*.h                310
+    total                     2548  (was 2034 pre-F21)
+Production surface (excluding the test-only probe): 2365 lines.
+
+Reproducibility trail:
+  Pre-F20: eb15d442dd1eace588c1c4ee4fab3e183addc70cc3a28773f8d5acfc0ff58af0
+  F20:     c873ddc4379c887d216f0b1f281c004655bd8cd9bae298b4b4f94639e2ce8bb2
+  F21:     959d5e67a16cb0ced254d6f189dccf3a29141199dc8f1f1dcbb39fadae51bc26
+  F21 patched-OFF (disable-and-test):
+           c44b276d7977198d653f097a32de83f174c8e8718fa2c82d5b6816f37f7945c1
+
 ## 2026-07-12, F18: close F9's COPY bypass via multi_insert override
 
 F9 identified the last one-line hole in F2's bypass-unbypassability
@@ -2200,3 +2393,125 @@ which is out of scope for the PoC.
 The `ssi` regression test file was a one-line probe of `pg_extension`;
 it has been removed along with the wrapper. Test coverage of the write
 path lives in `precedence`, `am_basic`, `r2_sources`, and `am_eviction`.
+
+## 2026-07-12, F20: close the UPDATE and DELETE bypasses
+
+A hostile-review audit surfaced two attack surfaces the F1..F19 write-path
+enumeration missed. Both were reproduced against the F19 build (dylib
+`eb15d442dd1eace5...`) before any fix:
+
+  * `scripts/update_forgery.sh`: seed an `INFERRED/0.4/'benign'` row,
+    issue `UPDATE fact SET ep_kind='MEASURED', ep_confidence=1.0,
+    value='forged'`, read back `MEASURED/1.0/'forged'` with `UPDATE 1`,
+    no error, no eviction audit row. The AM never saw the write:
+    `ModifyTable` -> `ExecUpdate` -> `table_tuple_update` dispatched on
+    the inherited `heapam_tuple_update` (heapam_handler.c:392-400
+    REL_18_STABLE) which called `heap_update` at heapam.c:3241.
+
+  * `scripts/delete_forgery.sh`: seed a `MEASURED/1.0/'sepsis'` row,
+    `DELETE` it (`DELETE 1`), then `INSERT` an `INFERRED/0.99/'benign'`
+    row. The precedence lattice has nothing to compare against
+    (`find_live_overlap` returns false), so the INFERRED forgery
+    lands and stands in for the MEASURED diagnosis. No eviction audit
+    was ever written for the MEASURED loss.
+
+The two options considered for UPDATE:
+  (a) Reject UPDATE of the epistemic prefix columns only. Allow
+      value/valid_time/sources changes. Rationale: the prefix records
+      the write-time epistemic act as the engine classified it;
+      changing it after commit forges the record of that act.
+  (b) Reject UPDATE entirely. Simpler; breaks any legitimate
+      content-correction workflow.
+
+Chose (a). The naive alternative --- re-run
+epistemic_tuple_insert_impl's enforcement on the new slot with the
+incumbent-is-self as the overlap match --- fails: NEW-MEASURED-conf=1.0
+beats OLD-INFERRED-conf=0.4 by kind rank, so the attack SUCCEEDS via
+legitimate precedence. The only defensible cut is at the prefix.
+
+The three options considered for DELETE:
+  (c) Reject DELETE entirely.
+  (d) Reject DELETE only for rows with open sys_time upper bound.
+  (e) Allow DELETE but always write an audit row before physical
+      removal.
+
+Chose (c). The rationale: any DELETE of a live row corresponds to an
+eviction event that the precedence lattice should have arbitrated;
+there is no adversary-friendly workflow that requires the caller to
+bypass that arbitration. A dedicated `epistemic.evict(...)` API that
+closes `sys_time`, writes an audit row, and passes the write through
+the eviction bookkeeping can layer atop this policy in a follow-up.
+
+Implementation (`src/epistemic_am.c`):
+
+  * `epistemic_tuple_update` --- signature verbatim from PG 18
+    tableam.h:718-727 REL_18_STABLE. Fetches the incumbent at otid
+    via `heap_fetch(rel, GetLatestSnapshot(), ...)`, deforms it,
+    reads (ep_kind, ep_specificity, ep_confidence). If any of the
+    three differ from the candidate slot's, `ereport(ERROR,
+    ERRCODE_CHECK_VIOLATION)` with the specific mismatch in
+    errdetail. Otherwise delegates to `heapam_tuple_update` via
+    the heapam TableAmRoutine pointer. Fetch uses GetLatestSnapshot
+    for the same F6 rationale that find_live_overlap uses.
+
+  * `epistemic_tuple_delete` --- signature verbatim from PG 18
+    tableam.h:709-716 REL_18_STABLE. Body is a single ereport with
+    ERRCODE_FEATURE_NOT_SUPPORTED. Documented `changingPart` handling
+    (not distinguished from ordinary DELETE) in the comment: partitioned
+    epistemic tables are out of scope for the PoC.
+
+Both callbacks are wired into `epistemic_am_methods` in
+`epistemic_am_handler`, next to the F18 `multi_insert` wiring.
+
+Adversarial validation. With BOTH wiring lines commented out
+(`/* epistemic_am_methods.tuple_update = ... */`) and the extension
+rebuilt (dylib flip `c873ddc4...` -> `1fb0d572...`), both forgery
+scripts print `FORGERY SUCCEEDED` and the attack lands as it did
+in the pre-F20 reproduction. Restoring the two wiring lines
+byte-identical and rebuilding (dylib returns to `c873ddc4...`)
+returns both to `FORGERY REJECTED`. The wiring is load-bearing;
+neither callback is dead code.
+
+Regression coverage. `sql/am_update_delete.sql` and its expected
+output exercise:
+  * a legal content-only UPDATE (value change) succeeds;
+  * an UPDATE that changes ep_kind is rejected;
+  * an UPDATE that changes ep_confidence is rejected;
+  * an UPDATE that changes ep_specificity is rejected;
+  * a DELETE is rejected outright.
+
+`scripts/bypass.sh` extended with scenarios 4 (UPDATE forgery) and
+5 (DELETE forgery), each with a trigger baseline that uses a
+BEFORE UPDATE/DELETE trigger checking the same conditions and with
+a DISABLE-TRIGGER extension that proves the AM callback survives
+where the trigger does not. Assertion count 15 -> 28.
+
+ENABLE ALWAYS TRIGGER audit. A related hostile-review question:
+does `TRIGGER_FIRES_ALWAYS` defeat the `session_replication_role =
+'replica'` bypass for a trigger-based enforcer? Yes, in one
+direction: the code at trigger.c:3489-3499 REL_18_STABLE skips
+`TRIGGER_FIRES_ON_ORIGIN` and `TRIGGER_DISABLED` under
+`SESSION_REPLICATION_ROLE_REPLICA` and neither disables
+`TRIGGER_FIRES_ALWAYS`, so an ALWAYS-marked trigger fires under
+replica role. But the same TriggerEnabled body still returns
+false on `TRIGGER_DISABLED` under EITHER branch, so
+`ALTER TABLE ... DISABLE TRIGGER ALL` (which flips tgenabled to 'D'
+at tablecmds.c:5588-5592) still turns an ENABLE ALWAYS trigger off.
+The AM callback runs regardless of any `pg_trigger.tgenabled`
+value and regardless of `session_replication_role`. The threat
+table in the paper's Section 2.3 has been updated to disclose this:
+the trigger baseline can survive `replica` if the operator opts in
+to `ENABLE ALWAYS`, but cannot survive `DISABLE TRIGGER ALL` even then.
+
+R2 SPI-under-lock non-issue. Related concern from the F20 review
+prompt: the F6 advisory lock is acquired at step 2 of
+`epistemic_tuple_insert_impl`, whereas R1..R5 (including R2's SPI
+call for source resolution and R5's SPI call for slot-kind check)
+run at step 1 BEFORE the lock. So neither SPI call runs under the
+advisory lock and no deadlock against other advisory-lock holders
+is possible on the current code path. The per-row SPI overhead is
+real but small (measured ~7 microseconds per non-MEASURED row on
+top of a ~19 microsecond MEASURED baseline on a Homebrew PG 18.4
+install; harness at `/tmp/f20_spi_bench.sh`) and is disclosed in
+Section 8 of the paper. Backend-local caching of source_registry
+via CacheRegisterRelcacheCallback is a follow-up optimisation.
