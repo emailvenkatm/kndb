@@ -1,115 +1,51 @@
-% tableam_audit.tex --- exhaustive PG 18 REL_18_STABLE TableAmRoutine
-% audit. Every callback in access/tableam.h is classified as one of:
-%
-%   OVERRIDDEN  (7 after F21): our AM binds a wrapper.
-%   READ-ONLY   : callback is a scan/fetch/estimate that cannot mutate
-%                 epistemic state.
-%   DELEGATED-STORAGE: heap's semantics accepted; the AM does not
-%                 introduce policy at this level, but any subsequent
-%                 mutating path routes through our overridden write
-%                 callbacks (e.g., rewrite path repopulates via
-%                 tuple_insert).
-%   DELEGATED-DECIDE: heap decides on our behalf and we accept the
-%                 answer (e.g., TOAST configuration).
+% tableam_audit.tex --- ABBREVIATED PG 18 REL_18_STABLE TableAmRoutine
+% audit. Full 42-row enumeration lives at
+% contrib/epistemic/bench/docs/tableam_audit.md and is what the paper
+% cites for the completeness argument. The in-body table below shows
+% only the load-bearing rows: seven OVERRIDDEN wrappers, three DDL rows
+% that require explicit disclosure, and category counts for the rest.
 %
 % Line numbers reference PG 18 REL_18_STABLE
-% src/include/access/tableam.h. Every "why" is checked against the
-% named citation in the source tree at
-% https://git.postgresql.org/gitweb/?p=postgresql.git;a=blob;f=src/include/access/tableam.h;hb=REL_18_STABLE .
-%
-% See DECISIONS.md (F21) for the classification methodology and the
+% src/include/access/tableam.h. See contrib/epistemic/DECISIONS.md
+% (F9, F18, F20, F21) for the classification methodology and the
 % disable-and-test proofs behind the seven OVERRIDDEN rows.
 
-\begin{table*}[t]
+\begin{table}[t]
 \centering
-\caption{Exhaustive audit of the PG 18 \texttt{TableAmRoutine} interface
-  (\texttt{access/tableam.h}, REL\_18\_STABLE, 42 callbacks). The
-  seven \textsc{overridden} rows are load-bearing: each has a
-  source-rebuild disable-and-test in \texttt{scripts/} that proves the
-  bypass returns when the wiring is commented out (see
-  \texttt{DECISIONS.md} F9, F18, F20, F21). The other 35 rows are
-  inherited from heap; the ``why safe'' column cites the specific
-  reason we do not need to intervene.}
+\caption{Abbreviated PG 18 \texttt{TableAmRoutine} audit (44 callbacks
+  total): the seven \textsc{overridden} rows and the three DDL-privileged
+  callbacks that require explicit disclosure. The full 44-row
+  enumeration with per-callback \texttt{tableam.h} citations and ``why
+  safe'' justifications is in
+  \texttt{contrib/epistemic/bench/docs/tableam\_audit.md}
+  in the repository. Category counts for the 34 non-cited rows:
+  28 read-only (scan / fetch / estimate);
+  5 delegated-storage (\texttt{index\_delete\_tuples}, \texttt{tuple\_lock},
+    \texttt{finish\_bulk\_insert}, \texttt{relation\_copy\_data},
+    \texttt{relation\_vacuum});
+  1 delegated-decide (\texttt{relation\_needs\_toast\_table}).}
 \label{tab:tableam-audit}
 \scriptsize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{p{3.6cm}p{1.5cm}p{1.5cm}p{9.0cm}}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{p{2.6cm}p{1.1cm}p{3.5cm}}
 \toprule
-callback & class & tableam.h & why safe / role \\
+callback & class & role \\
 \midrule
-\multicolumn{4}{l}{\emph{Slot callbacks}} \\
+\multicolumn{3}{l}{\emph{Seven OVERRIDDEN write-path callbacks}} \\
 \midrule
-\texttt{slot\_callbacks}             & read-only          & 302 & Returns the \texttt{TupleTableSlotOps} for tuples of this AM. Pure factory; no state mutation. \\
+\texttt{tuple\_insert}               & F1--F16 & R1--R5, F6 advisory lock, precedence + F8 xmin tiebreak, eviction audit. \\
+\texttt{multi\_insert}               & F18 & Per-slot fan-out to \texttt{epistemic\_tuple\_insert\_impl}; closes COPY CIM\_MULTI bypass. \\
+\texttt{tuple\_update}               & F20 & Refuse any \texttt{UPDATE} whose new (kind, spec, conf) differs from incumbent's. \\
+\texttt{tuple\_delete}               & F20 & Refuse \texttt{DELETE} outright (\texttt{ERRCODE\_FEATURE\_NOT\_SUPPORTED}). \\
+\texttt{tuple\_insert\_speculative}  & F21 & R1--R5, advisory lock, precedence; heap does the speculative write; deferred eviction stashed. \\
+\texttt{tuple\_complete\_speculative}& F21 & Drain pending eviction on succeeded=true; discard on succeeded=false. \\
+\texttt{relation\_toast\_am}         & F1  & Return \texttt{HEAP\_TABLE\_AM\_OID} so TOAST is plain heap; sidesteps \texttt{heapam.c:1352} identity check during TOAST index build. \\
 \midrule
-\multicolumn{4}{l}{\emph{Table scan callbacks}} \\
+\multicolumn{3}{l}{\emph{Three DDL-privileged rows requiring disclosure}} \\
 \midrule
-\texttt{scan\_begin}                 & read-only          & 326--330 & Starts a read-only scan with a snapshot. No mutation path. \\
-\texttt{scan\_end}                   & read-only          & 336 & Releases scan resources. No mutation. \\
-\texttt{scan\_rescan}                & read-only          & 342--344 & Restarts scan with new params. No mutation. \\
-\texttt{scan\_getnextslot}           & read-only          & 349--351 & Returns next tuple into slot. No mutation. \\
-\texttt{scan\_set\_tidrange}         & read-only          & 370--372 & Sets bounds for a TID-range scan. No mutation. \\
-\texttt{scan\_getnextslot\_tidrange} & read-only          & 378--380 & TID-range variant of \texttt{scan\_getnextslot}. No mutation. \\
-\midrule
-\multicolumn{4}{l}{\emph{Parallel scan}} \\
-\midrule
-\texttt{parallelscan\_estimate}      & read-only          & 391 & Sizes shared-mem DSM. No mutation. \\
-\texttt{parallelscan\_initialize}    & read-only          & 398--399 & Initialises a \texttt{ParallelTableScanDesc}. No user-visible state. \\
-\texttt{parallelscan\_reinitialize}  & read-only          & 405--406 & Re-initialises the DSM for a new scan. No mutation. \\
-\midrule
-\multicolumn{4}{l}{\emph{Index scan}} \\
-\midrule
-\texttt{index\_fetch\_begin}         & read-only          & 422 & Opens an index-scan fetch state. No mutation. \\
-\texttt{index\_fetch\_reset}         & read-only          & 428 & Resets between index scans. No mutation. \\
-\texttt{index\_fetch\_end}           & read-only          & 433 & Releases index-scan state. No mutation. \\
-\texttt{index\_fetch\_tuple}         & read-only          & 455--459 & Fetches by TID after visibility test. No mutation. \\
-\midrule
-\multicolumn{4}{l}{\emph{Non-modifying tuple ops}} \\
-\midrule
-\texttt{tuple\_fetch\_row\_version}  & read-only          & 472--475 & Fetches a tuple version. No mutation. \\
-\texttt{tuple\_tid\_valid}           & read-only          & 480--481 & Predicate on tid. No mutation. \\
-\texttt{tuple\_get\_latest\_tid}     & read-only          & 487--488 & Walks the update chain to the newest visible tid. Reads only. \\
-\texttt{tuple\_satisfies\_snapshot}  & read-only          & 494--496 & Visibility test. No mutation. \\
-\texttt{index\_delete\_tuples}       & delegated-storage  & 499--500 & Bottom-up index-delete driver. In heap's implementation, no user-visible tuples are removed; dead line pointers are reclaimed. Our epistemic invariants live in \emph{live} rows (\texttt{sys\_time @> now()}); dead-line-pointer reclamation cannot affect them. \\
-\midrule
-\multicolumn{4}{l}{\emph{Mutating tuple ops}} \\
-\midrule
-\texttt{tuple\_insert}               & \textbf{OVERRIDDEN} & 508--511 & F1--F16: R1--R5, F6 advisory lock, precedence + F8 xmin tiebreak, eviction audit, sys\_time close, rmgr-128 marker. \\
-\texttt{tuple\_insert\_speculative}  & \textbf{OVERRIDDEN} & 513--519 & \textbf{F21}: R1--R5, advisory lock, precedence; heap does the speculative write; deferred eviction stashed for confirm. \\
-\texttt{tuple\_complete\_speculative}& \textbf{OVERRIDDEN} & 521--525 & \textbf{F21}: on succeeded=true, drain the pending eviction (audit + sys\_time close + rmgr-128); on succeeded=false, discard. \\
-\texttt{multi\_insert}               & \textbf{OVERRIDDEN} & 527--529 & F18: fan out to \texttt{epistemic\_tuple\_insert\_impl} per slot; closes the COPY CIM\_MULTI bypass F9 identified. \\
-\texttt{tuple\_delete}               & \textbf{OVERRIDDEN} & 531--539 & F20: refuse \texttt{DELETE} outright with \texttt{ERRCODE\_FEATURE\_NOT\_SUPPORTED}. \\
-\texttt{tuple\_update}               & \textbf{OVERRIDDEN} & 541--551 & F20: refuse any \texttt{UPDATE} whose new \texttt{(ep\_kind, ep\_specificity, ep\_confidence)} differs from the incumbent's. \\
-\texttt{tuple\_lock}                 & delegated-storage  & 553--562 & Row-level lock acquisition (\texttt{SELECT FOR UPDATE}, replica-apply conflict resolution). Sets \texttt{xmax} to lock the tuple but does not mutate user columns; any subsequent modification routes back through \texttt{tuple\_update} or \texttt{tuple\_delete}, both overridden. \\
-\texttt{finish\_bulk\_insert}        & delegated-storage  & 576 & Optional per-bulk-insert flush. In-tree AMs no longer use it; heap's binding is \texttt{NULL} (\texttt{heapam\_handler.c:2661}). Any prior mutation went through \texttt{tuple\_insert} or \texttt{multi\_insert}. \\
-\midrule
-\multicolumn{4}{l}{\emph{DDL}} \\
-\midrule
-\texttt{relation\_set\_new\_filelocator} & delegated-storage & 600--604 & Allocates a new physical file for TRUNCATE/CLUSTER/REINDEX-style rewrites (\texttt{heapam\_handler.c:583--622}: \texttt{RelationCreateStorage} + optional init-fork). Storage is empty on return; any subsequent rewrite repopulates via \texttt{tuple\_insert} or \texttt{multi\_insert}. \\
-\texttt{relation\_nontransactional\_truncate} & delegated-storage & 614 & Truncates the file to zero size (heap: \texttt{RelationTruncate}, no WAL). Removes all rows including epistemic incumbents. This IS a policy-relevant bypass surface for the eviction audit --- but it is \texttt{TRUNCATE} DDL, guarded by \texttt{TRUNCATE} privilege, and out of scope for the write-path threat (Section~2.3). Flagged as a schema-change bypass alongside \texttt{ALTER TABLE \dots SET ACCESS METHOD heap} (Section~9). \\
-\texttt{relation\_copy\_data}        & delegated-storage & 622--623 & Copies the physical file to a new tablespace (\texttt{ALTER TABLE \dots SET TABLESPACE}). Rows are copied byte-for-byte; no epistemic-level policy applies. \\
-\texttt{relation\_copy\_for\_cluster}& delegated-storage & 626--635 & Copies rows during \texttt{CLUSTER} / \texttt{VACUUM FULL}. Heap re-inserts via \texttt{raw\_heap\_insert}, not \texttt{table\_tuple\_insert}, so the epistemic checks do NOT re-fire during the rewrite. Accepted because CLUSTER/VACUUM FULL is a DDL-privileged operation that preserves the current visible rows; it cannot introduce a forgery, only reorder existing rows. Flagged as an in-scope limitation on par with the schema-change threat. \\
-\texttt{relation\_vacuum}            & delegated-storage & 652--654 & Standard VACUUM (dead-tuple reclamation, freeze). Cannot resurrect a dead row or invent a live one; the ``live row per slot'' invariant is preserved. \\
-\texttt{scan\_analyze\_next\_block}  & read-only          & 673--674 & ANALYZE block sampling. Read-only. \\
-\texttt{scan\_analyze\_next\_tuple}  & read-only          & 684--688 & ANALYZE tuple sampling. Read-only. \\
-\texttt{index\_build\_range\_scan}   & read-only          & 691--701 & Feeds tuples to \texttt{IndexBuildCallback} during index build. Read-only from the AM's perspective; the index AM writes to its own relation. \\
-\texttt{index\_validate\_scan}       & read-only          & 704--708 & Concurrent-index-build validation phase. Read-only against the table. \\
-\midrule
-\multicolumn{4}{l}{\emph{Misc}} \\
-\midrule
-\texttt{relation\_size}              & read-only          & 724 & Returns bytes for a fork. Pure metadata. \\
-\texttt{relation\_needs\_toast\_table} & delegated-decide & 734 & Heap's decision, whether a TOAST table is needed. We accept it. \\
-\texttt{relation\_toast\_am}         & \textbf{OVERRIDDEN} & 741 & Return \texttt{HEAP\_TABLE\_AM\_OID} so the TOAST table is plain heap; otherwise PG's index build for the TOAST table trips \texttt{heap\_getnext}'s \texttt{rd\_tableam == GetHeapamTableAmRoutine()} identity check (\texttt{heapam.c:1352}). \\
-\texttt{relation\_fetch\_toast\_slice} & read-only        & 748--752 & Fetches a slice of a TOAST'd value. Read-only. \\
-\midrule
-\multicolumn{4}{l}{\emph{Planner}} \\
-\midrule
-\texttt{relation\_estimate\_size}    & read-only          & 770--772 & Row-count / page-count estimate for the planner. Pure. \\
-\midrule
-\multicolumn{4}{l}{\emph{Executor}} \\
-\midrule
-\texttt{scan\_bitmap\_next\_tuple}   & read-only          & 792--796 & Fetch next visible tuple from a bitmap scan. Read-only. \\
-\texttt{scan\_sample\_next\_block}   & read-only          & 823--824 & Sample-scan block selection. Read-only. \\
-\texttt{scan\_sample\_next\_tuple}   & read-only          & 839--841 & Sample-scan tuple selection. Read-only. \\
+\texttt{relation\_set\_new\_filelocator} & inherited & Allocates a new physical file for TRUNCATE/CLUSTER/REINDEX. Storage is empty on return; any rewrite repopulates via \texttt{tuple\_insert} or \texttt{multi\_insert}. \\
+\texttt{relation\_nontransactional\_truncate} & inherited & Zeroes the file (\texttt{TRUNCATE}). Removes epistemic incumbents without eviction audit. DDL-privileged; classified with \texttt{SET ACCESS METHOD heap} (Section~\ref{sec:limitations}). \\
+\texttt{relation\_copy\_for\_cluster} & inherited & \texttt{CLUSTER}/\texttt{VACUUM FULL} re-inserts via heap's \texttt{raw\_heap\_insert}, not \texttt{table\_tuple\_insert}, so epistemic checks do not re-fire. Cannot introduce a forgery, only reorder existing rows; disclosed in Section~\ref{sec:limitations}. \\
 \bottomrule
 \end{tabular}
-\end{table*}
+\end{table}
