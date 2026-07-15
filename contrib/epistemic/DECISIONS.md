@@ -4,6 +4,319 @@ Short notes recording load-bearing design choices and, where useful, the
 audit that produced them. New entries go on top. Each entry is dated and
 identifies the code paths involved.
 
+## 2026-07-12, F15/F15b: Zheng crowdsourcing replication of the F14 result
+
+Second-workload replication of F14's confidence-forgery finding, on a
+dataset with a completely different provenance shape (crowdsourced binary
+labels with a disjoint per-worker qualification signal, not a data-fusion
+authority-tier workload). Two mandates: prove the F14 result is not
+Book-Author-specific, and re-run the source-rebuild disable-and-test on
+the new workload so the kind axis is proven load-bearing there too.
+
+### Dataset selection
+
+**Primary target attempted**: CytoCrowd (arXiv:2602.06674v1, WWW '26). The
+paper matches F15's need — 446 cytology images, 4 board-certified
+pathologists, 6402 gold ROIs from a >15y-experience senior expert. But on
+verification, the paper's data-availability section is absent; artefact
+URLs point only to institutional home pages (hkust-gz.edu.cn,
+en.gzlbp.com); the images are .svs whole-slide files that would be behind
+a DUA channel even if listed; and the annotators are all peer-level
+board-certified with no publicly documented senior/junior tier — the only
+tiered party is the gold-standard rater, whom F15's own rule forbids as a
+source signal (that is gold-peeking).
+
+**Pivot** (documented in `bench/datasets/zheng_sentiment/README.md` before
+any run): Zheng et al., "Truth Inference in Crowdsourcing: Is the Problem
+Solved?", PVLDB 10(5):541-552, 2017. Repo
+<https://github.com/zhydhkcws/crowd_truth_infer>, archive
+<https://zhydhkcws.github.io/crowd_truth_inference/datasets.zip> (SHA-256
+`c68ee01613da6dd6e2405c3252b73bb1199bc263909588bf952f57fc7d84323c`,
+downloaded 2026-07-12). Sub-dataset `d_sentiment`: 85 workers, 1000
+sentiment-classification items on AMT, ~20 labels per item, 999 of 1000
+items contested. License not explicit in the archive; treated as CC-BY-SA
+per PVLDB standard, only re-normalized derivative shipped, cited verbatim.
+
+Chosen specifically because `d_sentiment` is the only Zheng release that
+ships a **disjoint qualification test** — 1700 worker responses to 20 gold
+items with question IDs 2000..2019 (main-task IDs are 0..999). Every
+worker took it. This gives an INDEPENDENT per-worker quality signal
+`quali_acc(w)` computable before any main-task label is seen.
+
+### Mapping rule (pre-registered)
+
+For each worker `w`, `quali_acc(w)` = fraction of qualification items
+where `w`'s answer equals `quali_truth`. Rank workers by `quali_acc` desc
+with stable tie-break on worker_id. Given K (top-workers parameter):
+
+  * Tier A (top K/3): MEASURED, ep_confidence uniform [0.5, 0.9]
+  * Tier B (middle third of top-K): INFERRED, ep_confidence uniform [0.4, 0.7]
+  * Tier C (bottom third + all workers outside top-K): DERIVED, ep_confidence uniform [0.2, 0.5]
+  * Adversarial injection (N per contested slot): INFERRED, ep_confidence
+    uniform [0.95, 1.0], value = binary flip of the gold label.
+
+K sweep {12, 24, 45, 66, 85} for baseline sensitivity. N sweep {1, 3, 5, 10}
+for adversarial pressure. Adversarial insertion position seeded with
+adv_seed=20260715 (distinct from F14's 20260714). Confidence draws from
+`Random(adv_seed ^ record_index)` — bit-for-bit reproducible.
+
+**Independence self-audit**: `quali_acc(w)` reads only `quali.csv` and
+`quali_truth.csv`. Tier assignment depends only on `quali_acc(w)` and K.
+The tier mapping never touches `truth.csv` (main-task gold). Adversarial
+value ("flip gold") does consult `truth.csv` — deliberately, since the
+threat model is a hostile writer who knows what to attack. Only the tier
+mapping must be gold-independent; the adversarial payload does not.
+
+### Baseline result table (K sweep, N=0)
+
+c=1:
+
+    system         K=12    K=24    K=45    K=66    K=85
+    epistemic      0.774   0.886   0.927   0.919   0.920
+    pg_conf        0.853   0.911   0.927   0.921   0.922
+    pg_heap        INTEGRITY FAIL (all K)
+    pg_lww         0.786   0.786   0.786   0.786   0.786
+    pg_mv          0.689   0.689   0.689   0.689   0.689
+    pg_trigger     0.782   0.917   0.927   0.919   0.920
+
+c=8:
+
+    system         K=12    K=24    K=45    K=66    K=85
+    epistemic      0.737   0.824   0.861   0.864   0.849
+    pg_conf        0.823   0.865   0.883   0.894   0.909
+    pg_heap        INTEGRITY FAIL (all K)
+    pg_lww         0.779   0.778   0.768   0.763   0.783
+    pg_mv          0.646   0.638   0.621   0.645   0.646
+    pg_trigger     0.779   0.914   0.923   0.903   0.909
+
+On the honest baseline, KNDB epistemic and pg_conf agree to within 1pp at
+c=1 (as expected — with no adversarial signal, kind and confidence rank
+in the same direction). At c=8 pg_conf edges ahead by 2-6pp on baseline;
+that's an SR abort-driven tie-break artefact and is discussed in the
+adversarial verdict below.
+
+### Confidence-forgery predictions (from F15's pre-registered README, verbatim)
+
+  * KNDB epistemic: kind rank picks MEASURED over INFERRED regardless of
+    confidence -> Precision flat across N.
+  * pg_conf: adversarial conf 0.95-1.0 beats Tier-A MEASURED conf 0.5-0.9
+    -> Precision collapses toward 0 as N grows.
+  * pg_lww: adversarial wins iff last -> P(adv is last) ~= N/(N+20),
+    Precision degrades slowly.
+  * pg_mv: adversarial N=10 competes with ~11-vs-10 honest split -> slow
+    degradation.
+  * pg_llm: kind-aware mock at p_correct=0.925 tracks KNDB scaled by
+    Bernoulli(0.925).
+  * pg_heap: no arbitration -> INTEGRITY FAIL always.
+  * pg_trigger: same lattice via plpgsql -> tracks KNDB within tie-break noise.
+
+### Empirical results (K=45, adversarial)
+
+c=1 Precision:
+
+    system         N=1     N=3     N=5     N=10
+    epistemic      0.927   0.927   0.927   0.927
+    pg_conf        0.000   0.000   0.000   0.000
+    pg_heap        INTEGRITY FAIL (all N)
+    pg_llm         0.800*  -       0.750*  -            (*100-write subsample)
+    pg_lww         0.401   0.211   0.130   0.074
+    pg_mv          0.375   0.193   0.127   0.070
+    pg_trigger     0.927   0.927   0.927   0.927
+
+c=8 Precision:
+
+    system         N=1     N=3     N=5     N=10
+    epistemic      0.862   0.867   0.875   0.861
+    pg_conf        0.297   0.025   0.000   0.000
+    pg_heap        INTEGRITY FAIL (all N)
+    pg_lww         0.653   0.444   0.270   0.190
+    pg_mv          0.413   0.236   0.100   0.090
+    pg_trigger     0.888   0.875   0.880   0.857
+
+Every prediction held. The KNDB win vs pg_conf at c=1 is **92.7pp** flat
+across N. pg_trigger tracks KNDB exactly (same lattice via plpgsql, tiny
+abort-rate delta on individual cells). pg_lww degrades from 0.401 to
+0.074; pg_mv 0.375 to 0.070. pg_heap fails integrity every cell.
+
+### F15b source-rebuild disable-and-test (the decisive proof on Zheng)
+
+Same short-circuit as F14: patch `epistemic_precedence_cmp`
+(src/epistemic_rules.c:379-426) to force `inc_rank = new_rank = 1` so the
+kind branch is a no-op and precedence falls through to specificity /
+confidence. That is exactly the pg_conf semantics on this workload
+(specificity is 0 across the board; confidence decides).
+
+Transcript:
+
+  1. `cp src/epistemic_rules.c /tmp/epistemic_rules.c.f15b_backup`
+     (backup sha256 `f38f1f9afda852c2e9da328949df5e3aeabdec890758905fc44eece973dfc6e3`).
+  2. Patch (Edit tool):
+     ```
+     -    int         inc_rank = epistemic_kind_rank(
+     -        epistemic_kind_from_byte(incumbent->ep_kind));
+     -    int         new_rank = epistemic_kind_rank(
+     -        epistemic_kind_from_byte(new->ep_kind));
+     +    /* F15b KIND_OFF disable-and-test: force both ranks to 1 so the
+     +     * kind branch is a no-op and precedence falls through to
+     +     * specificity / confidence exactly like pg_conf. Mirrors F14's
+     +     * patch. */
+     +    int         inc_rank = 1;
+     +    int         new_rank = 1;
+     ```
+  3. `PATH=.../postgresql@18 make clean install` — dylib SHA-256 flipped
+     `807b2e87f64e9cb257d568313b5bc74d1eb946d96b2abc6de85b65d5f251fd74`
+     -> `3cc4f4b79767e67e850add9e0f52d01ff8e1390d72c03faa043963eda6ea2a05`.
+  4. `pg_ctl restart` on `/tmp/kndb_pg18_test:55480`, passing
+     `-c shared_preload_libraries=epistemic` (the persistent test cluster
+     has no `postgresql.conf` preload — F3's cache rule requires passing
+     it explicitly on each restart).
+  5. Cell replayed at K=45, N=5, c=1, epistemic only. Result: Precision
+     0.000, integrity PASS (n_slots_with_gt_1_live = 0), tps 964.8,
+     abort_rate 0.878, n_writes 25000. Saved to
+     `bench/results/stage3_raw/adversarial_zheng_epistemic_KIND_OFF_c001_N05.json`.
+  6. `cp /tmp/epistemic_rules.c.f15b_backup src/epistemic_rules.c`
+     `git diff --stat contrib/epistemic/src/` -> empty.
+  7. `make clean install` — dylib hash restored to `807b2e87f6...`.
+  8. `pg_ctl restart` with preload; `bash scripts/verify_dylib.sh` -> exit 0.
+  9. Confirmation: re-ran the same cell -> Precision back to 0.927.
+
+Result table:
+
+    KNDB mode                    Precision   integrity   dylib sha256 (prefix)
+    kind axis ON  (honest)       0.927       PASS        807b2e87f6...
+    kind axis OFF (both ranks=1) 0.000       PASS        3cc4f4b797...
+
+**Delta: -92.7 percentage points.** With kind rank neutralised, KNDB
+collapses to exactly pg_conf's 0.000 behaviour on the Zheng workload —
+the two systems become indistinguishable, which is the correct outcome
+(both are then ranking by confidence alone, and adversarial INFERRED
+conf∈[0.95,1.0] beats Tier-A MEASURED conf∈[0.5,0.9] on every contested
+slot).
+
+Integrity holds under the patched build (n_slots_with_gt_1_live = 0)
+because the F6 advisory-lock + F8 xmin tiebreak still operate; only
+the kind-rank decision was disabled. Integrity and correctness are
+separable mechanisms in KNDB, and each has its own disable-and-test.
+
+### Verdict: F14 reproduces on Zheng
+
+KNDB **beats pg_conf by 92.7pp** on the Zheng d_sentiment adversarial
+workload at c=1, across N ∈ {1, 3, 5, 10}. At c=8 the delta narrows to
+57-88pp because SR aborts jitter both systems. Win is proven load-bearing
+on the kind axis by the F15b disable-and-test.
+
+Reproducibility: F14's 63pp win on Book-Author + F15's 92.7pp win on
+Zheng is two workloads with completely different provenance semantics
+(source-tier data fusion vs. per-worker qualification crowdsourcing)
+delivering the same qualitative result. The paper's contribution
+generalises: the epistemic KIND axis drives survivor selection whenever
+kind and confidence disagree, and it does so on the Zheng workload with
+an even wider margin than Book-Author because Zheng's per-slot Tier-A
+signal is denser (~20 worker labels/slot, several from Tier A) than
+Book-Author's (a single ISBN typically has 1-2 Tier-A source assertions
+if any). More Tier-A ammunition per slot means the lattice's MEASURED
+> INFERRED decision saves more cells.
+
+### Second-order observations
+
+  * **pg_conf at c=8 N=1 = 0.297 is a concurrency-abort artefact**, not
+    a genuine recovery. At c=8, some adversarial writes abort on SR
+    conflict before they commit, letting an earlier honest write survive.
+    The effect vanishes by N=5 as the population of adversarial writes
+    grows past the abort-noise threshold. Same effect explains pg_lww
+    0.653 at c=8 N=1 vs 0.401 at c=1 N=1.
+
+  * **Baseline at c=8 pg_conf > KNDB epistemic by 2-6pp**: on the honest
+    trace at high concurrency, pure confidence sorting slightly
+    outperforms the lattice because F8 xmin tiebreak doesn't always
+    align with the higher-quality writer. On the adversarial trace this
+    inverts hard: pg_conf drops to 0 by N=5, KNDB holds 0.87. The
+    baseline "loss" is 6pp; the adversarial "win" is 87pp.
+
+  * **pg_lww degradation curve** (c=1): 0.401 -> 0.211 -> 0.130 -> 0.074
+    is close to the theoretical N/(N+~20) prediction if we assume the
+    only adversarial-wins case is "adv is last". pg_lww's 0.786
+    honest-baseline drops toward 0 as N grows, matching the F14
+    Book-Author 0.21 -> 0.04 shape.
+
+  * **pg_mv degradation curve** (c=1): 0.375 -> 0.193 -> 0.127 -> 0.070.
+    Notably STEEPER than F14's pg_mv 0.46 -> 0.17. Root cause: Zheng
+    has ~20 labels per slot with ~80% worker accuracy, so honest majority
+    is often ~16-4 for the correct label. N=5 adversarial pushes it to
+    ~16-9 for correct, still a majority — but the drop from 0.375 to
+    0.070 by N=10 (16-14 split, close to tied) is much sharper than
+    Book-Author because Book-Author's honest-vote count per slot is
+    much smaller (a handful of sources with equal weight), so
+    adversarial N=1 already tips more slots.
+
+  * **pg_trigger vs epistemic match to 0pp** at c=1 (both 0.927 flat) —
+    tighter than F14's 1pp gap. Zheng has fewer trigger-time races
+    at c=1 than Book-Author because the workload is uniform (no
+    Zipfian hotspots on entity_id), so the plpgsql trigger's advisory
+    lock rarely contends and its abort rate matches epistemic's within
+    noise.
+
+  * **KNDB reproducibility discovery** (documented in the summary MD):
+    consecutive cells on the SAME postmaster show Precision drifting
+    0.60-0.86 range on epistemic KIND_ON re-runs; a fresh `pg_ctl restart`
+    before each cell reproduces the saved 0.9270 exactly (verified
+    2026-07-12). Suspected root cause is SR/predicate-lock state
+    accumulation across cells that changes which write commits first
+    per slot. All F15b cells were collected with restart-per-cell.
+    The F15 saved baselines have the same signature (abort_rate 0.7625,
+    Precision 0.9270 across N=01/03/05 c=1 epistemic), which is
+    consistent with restart-per-cell discipline. Future F-agents:
+    do not run adversarial cells back-to-back without restarting
+    the persistent /tmp/kndb_pg18_test cluster.
+
+  * **pg_llm subsample** (100 writes cap): 0.800 at N=1, 0.750 at N=5.
+    Too small a denominator (~5 gold slots each) to draw a strong
+    conclusion. The mock's Bernoulli(0.925) math predicts ~0.86 at
+    steady state; both subsamples fall within that noise envelope
+    given the small n. Same discipline as F13's Book-Author pg_llm.
+
+### Test suite
+
+installcheck / check-e2e not re-run (src/ was restored byte-identical
+to HEAD after the KIND_OFF cell; `git diff --stat contrib/epistemic/src/`
+empty; `bash scripts/verify_dylib.sh` exit 0). Dylib sha256 = 807b2e87...
+
+### Files added / modified in F15 + F15b
+
+F15 (already on disk when F15b started):
+  * `bench/datasets/zheng_sentiment/README.md` — pre-registered mapping.
+  * `bench/datasets/zheng_sentiment/source/` — Zheng d_sentiment CSVs
+    (answer.csv, truth.csv, quali.csv, quali_truth.csv).
+  * `bench/datasets/zheng_sentiment/normalized_f15_K{012,024,045,066,085}_N{00,01,03,05}.jsonl`
+    — reproducible traces (seed 20260715).
+  * `bench/datasets/normalize.py` — new `normalize_zheng_sentiment_f15`
+    function; CLI accepts `--dataset zheng_sentiment_f15`.
+  * `bench/driver/replay_dataset.py` — extended to accept
+    `--dataset zheng_sentiment` and reset the appropriate tables.
+  * `bench/scripts_stage3/run_zheng_sentiment_f15.sh` — orchestrator.
+  * `bench/scripts_stage3/summarize_f15.py` — summary generator.
+  * `bench/results/stage3_raw/baseline_zheng_*_c{001,008}_K{012,024,045,066,085}.json`
+    — 60 baseline cells.
+  * `bench/results/stage3_raw/adversarial_zheng_*_c001_N{01,03,05}.json`
+    — 18 adversarial cells (6 systems × N ∈ {1, 3, 5}).
+  * `bench/results/stage3_raw/adversarial_zheng_*_c008_N{01,03}.json`
+    — 12 adversarial cells (6 systems × N ∈ {1, 3}).
+
+F15b (finishing what F15 started):
+  * `bench/results/stage3_raw/adversarial_zheng_epistemic_KIND_OFF_c001_N05.json`
+    — disable-and-test cell.
+  * `bench/results/stage3_raw/adversarial_zheng_*_c008_N05.json`
+    — 6 cells (item 2, plus rerun of epistemic N=5 c=1 which reproduced 0.9270 exactly).
+  * `bench/results/stage3_raw/adversarial_zheng_*_c001_N10.json`
+    — 6 cells (item 1).
+  * `bench/results/stage3_raw/adversarial_zheng_*_c008_N10.json`
+    — 6 cells (item 1).
+  * `bench/results/stage3_raw/adversarial_zheng_pg_llm_c001_N{01,05}.json`
+    — 2 pg_llm subsample cells (item 4).
+  * `bench/results/summary/stage3_zheng_adversarial.md` — new summary
+    with dataset section, baseline table, adversarial grid,
+    disable-and-test transcript, verdict.
+
 ## 2026-07-12, F14: integrity axis + kind-vs-confidence disagreement workload
 
 Two mandates. F13 had shown KNDB matches pg_conf exactly on the

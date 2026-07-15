@@ -422,6 +422,13 @@ def score_correctness(dataset: str, trace: List[Dict[str, Any]],
         # list under the loose normalization. Alias to AA for consistency.
         corr["Precision"] = corr["all_slot_accuracy"]
 
+    if dataset == "zheng_sentiment":
+        # Zheng VLDB'17 d_sentiment: 2-class categorical. Exact-match
+        # is used for `match_fn` (see above; only bookauthor overrides
+        # the default). Precision here is the fraction of gold slots
+        # whose live survivor matches the gold label.
+        corr["Precision"] = corr["all_slot_accuracy"]
+
     if dataset == "mquake":
         # UOCS: fraction of cases where every rewrite's survivor == target_new.
         n_cases = len(per_case_slots)
@@ -452,7 +459,7 @@ def main() -> int:
     ap.add_argument("--dsn", default=os.environ.get("YCSB_DSN"))
     ap.add_argument("--dataset",
                     choices=["memoryagentbench", "longmemeval", "mquake",
-                             "bookauthor"],
+                             "bookauthor", "zheng_sentiment"],
                     required=True)
     ap.add_argument("--trace", required=True,
                     help="path to normalized.jsonl")

@@ -807,6 +807,252 @@ def normalize_bookauthor_f14(source_dir: str, out_path: str,
     return stats_out
 
 
+# --------------------------------------------------------------------
+# Dataset E: Zheng VLDB'17 d_sentiment (F15).
+# --------------------------------------------------------------------
+#
+# See bench/datasets/zheng_sentiment/README.md for the pre-registered
+# mapping rationale. In brief:
+#
+#   * Independent per-worker quality signal = accuracy on a disjoint
+#     20-item qualification test. Computed WITHOUT touching main-task
+#     truth.csv.
+#   * K-parametric tier assignment: top K/3 by quali_acc -> MEASURED,
+#     middle third of top-K -> INFERRED, bottom third + rest -> DERIVED.
+#   * F14-style confidence ranges: MEASURED [0.5,0.9], INFERRED [0.4,0.7],
+#     DERIVED [0.2,0.5], adversarial INFERRED [0.95,1.0].
+#   * Adversarial: N flipped-gold INFERRED writes per contested slot,
+#     inserted at random positions (deterministic seed).
+
+def _zheng_sentiment_load(source_dir: str) -> Dict[str, Any]:
+    import csv
+    from collections import defaultdict
+
+    answers: List[Tuple[str, str, str]] = []
+    with open(os.path.join(source_dir, "answer.csv")) as f:
+        r = csv.DictReader(f)
+        for row in r:
+            answers.append((row["id"], row["worker"], row["answer"]))
+
+    truth: Dict[str, str] = {}
+    with open(os.path.join(source_dir, "truth.csv")) as f:
+        r = csv.DictReader(f)
+        for row in r:
+            truth[row["q"]] = row["truth"]
+
+    quali_truth: Dict[str, str] = {}
+    with open(os.path.join(source_dir, "quali_truth.csv")) as f:
+        r = csv.DictReader(f)
+        for row in r:
+            quali_truth[row["q"]] = row["truth"]
+
+    quali_resp: Dict[str, List[Tuple[str, str]]] = defaultdict(list)
+    with open(os.path.join(source_dir, "quali.csv")) as f:
+        r = csv.DictReader(f)
+        for row in r:
+            quali_resp[row["worker"]].append((row["id"], row["answer"]))
+
+    return {
+        "answers": answers,
+        "truth": truth,
+        "quali_truth": quali_truth,
+        "quali_resp": quali_resp,
+    }
+
+
+def _zheng_sentiment_worker_scores(
+        quali_truth: Dict[str, str],
+        quali_resp: Dict[str, List[Tuple[str, str]]]
+        ) -> Dict[str, float]:
+    """Per-worker qualification accuracy. Gold-independent from main task."""
+    out: Dict[str, float] = {}
+    for w, resps in quali_resp.items():
+        n_ok = 0
+        n_tot = 0
+        for qid, a in resps:
+            if qid in quali_truth:
+                n_tot += 1
+                if quali_truth[qid] == a:
+                    n_ok += 1
+        if n_tot > 0:
+            out[w] = n_ok / n_tot
+    return out
+
+
+def normalize_zheng_sentiment_f15(source_dir: str, out_path: str,
+                                  top_k: int,
+                                  n_adversarial_per_slot: int,
+                                  adv_seed: int = 20260715,
+                                  ) -> Dict[str, Any]:
+    """
+    F15 normalizer for Zheng VLDB'17 d_sentiment with adversarial injection.
+
+    Ground-truth policy (same as F14): a MEASURED value beats an INFERRED
+    value regardless of the INFERRED value's asserted confidence.
+
+    Threat model (same as F14): hostile writer asserts HIGH confidence on
+    an INFERRED value that is the wrong-class label (binary flip since
+    d_sentiment is a 2-class task).
+    """
+    import random as _random
+
+    data = _zheng_sentiment_load(source_dir)
+    answers = data["answers"]
+    truth = data["truth"]
+    quali_truth = data["quali_truth"]
+    quali_resp = data["quali_resp"]
+
+    wscores = _zheng_sentiment_worker_scores(quali_truth, quali_resp)
+
+    # Rank workers by quali_acc desc; stable tie-break on worker_id.
+    sorted_workers = sorted(wscores.items(), key=lambda kv: (-kv[1], kv[0]))
+    all_worker_ids = {w for w, _ in sorted_workers}
+    top_k = min(top_k, len(sorted_workers))
+    top_k_set = {w for w, _ in sorted_workers[:top_k]}
+    a_third = max(1, top_k // 3)
+    b_third_end = min(top_k, 2 * a_third)
+    tier_A = {w for w, _ in sorted_workers[:a_third]}
+    tier_B = {w for w, _ in sorted_workers[a_third:b_third_end]}
+    # tier_C = everyone else (bottom of top-K + workers outside top-K
+    # + any worker with no quali score, though for d_sentiment all
+    # workers have quali coverage).
+
+    tier_confs = {
+        "MEASURED": (0.5, 0.9),
+        "INFERRED": (0.4, 0.7),
+        "DERIVED": (0.2, 0.5),
+    }
+
+    def tier_of(w: str) -> str:
+        if w in tier_A:
+            return "MEASURED"
+        if w in tier_B:
+            return "INFERRED"
+        return "DERIVED"
+
+    def _conf_sample(low: float, high: float, idx: int) -> float:
+        rng = _random.Random(adv_seed ^ idx)
+        return low + (high - low) * rng.random()
+
+    # Binary label decode: Zheng uses "1" / "0" strings.
+    def _decode(v: str) -> str:
+        return "pos" if str(v).strip() == "1" else "neg"
+
+    def _decode_flip(v: str) -> str:
+        return "neg" if str(v).strip() == "1" else "pos"
+
+    stats_out: Dict[str, Any] = {
+        "n_workers_total": len(all_worker_ids),
+        "n_workers_with_quali": len(wscores),
+        "n_workers_top_k": len(top_k_set),
+        "top_k_parameter": top_k,
+        "tier_sizes": {"A": len(tier_A), "B": len(tier_B),
+                       "C": len(all_worker_ids) - len(tier_A) - len(tier_B)},
+        "n_gold_slots": len(truth),
+        "n_answers_total": len(answers),
+        "n_adversarial_per_slot": n_adversarial_per_slot,
+        "adv_seed": adv_seed,
+        "tier_counts": {"MEASURED": 0, "INFERRED": 0, "DERIVED": 0,
+                        "ADVERSARIAL_INFERRED": 0},
+        "quali_acc_by_tier": {
+            "A_min": min((wscores[w] for w in tier_A), default=None),
+            "A_max": max((wscores[w] for w in tier_A), default=None),
+            "B_min": min((wscores[w] for w in tier_B), default=None),
+            "B_max": max((wscores[w] for w in tier_B), default=None),
+        },
+    }
+
+    base_epoch = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp())
+
+    honest_rows: List[Dict[str, Any]] = []
+    idx = 0
+    for row_i, (qid, w, ans) in enumerate(answers):
+        if qid not in truth:
+            continue  # only score gold slots
+        kind = tier_of(w)
+        lo, hi = tier_confs[kind]
+        conf = _conf_sample(lo, hi, idx)
+        stats_out["tier_counts"][kind] += 1
+        entity = stable_entity_id(f"zheng_sentiment::{qid}")
+        attr = safe_attribute("sentiment")
+        val = _decode(ans)
+        gt = _decode(truth[qid])
+        honest_rows.append({
+            "entity_id": entity,
+            "attribute": attr,
+            "value": val,
+            "ep_kind": kind,
+            "ep_specificity": 0,
+            "ep_confidence": round(conf, 6),
+            "valid_time_lower_epoch": base_epoch + row_i * 60,
+            "valid_time_upper_epoch": None,
+            "sources": (None if kind == "MEASURED"
+                        else [f"zheng_worker::{w}"]),
+            "ground_truth_survivor": gt,
+            "dataset_metadata": {
+                "question_id": qid,
+                "worker_id": w,
+                "worker_quali_acc": round(wscores.get(w, 0.0), 4),
+                "tier_top_k": top_k,
+                "assigned_tier": ("A" if kind == "MEASURED"
+                                  else ("B" if kind == "INFERRED"
+                                        else "C")),
+                "record_role": "honest",
+                "trace_index": idx,
+            },
+        })
+        idx += 1
+
+    # Adversarial: one flipped-gold write per (question, i) pair.
+    adv_rows: List[Dict[str, Any]] = []
+    adv_base_epoch = base_epoch + len(answers) * 60 + 3600
+    for qid, gold_raw in sorted(truth.items()):
+        entity = stable_entity_id(f"zheng_sentiment::{qid}")
+        attr = safe_attribute("sentiment")
+        gt = _decode(gold_raw)
+        for i in range(n_adversarial_per_slot):
+            conf = _conf_sample(0.95, 1.0, idx)
+            adv_rows.append({
+                "entity_id": entity,
+                "attribute": attr,
+                "value": _decode_flip(gold_raw),
+                "ep_kind": "INFERRED",
+                "ep_specificity": 0,
+                "ep_confidence": round(conf, 6),
+                "valid_time_lower_epoch": adv_base_epoch + i * 60,
+                "valid_time_upper_epoch": None,
+                "sources": [f"adversarial_agent_{i}"],
+                "ground_truth_survivor": gt,
+                "dataset_metadata": {
+                    "question_id": qid,
+                    "record_role": "adversarial",
+                    "trace_index": idx,
+                    "strategy": "flip_binary",
+                    "tier_top_k": top_k,
+                    "assigned_tier": "ADV",
+                },
+            })
+            stats_out["tier_counts"]["ADVERSARIAL_INFERRED"] += 1
+            idx += 1
+
+    # Random-position interleave; deterministic per adv_seed.
+    trace: List[Dict[str, Any]] = list(honest_rows)
+    pos_rng = _random.Random(adv_seed)
+    for rec in adv_rows:
+        insert_at = pos_rng.randrange(len(trace) + 1)
+        trace.insert(insert_at, rec)
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, "w") as fh:
+        for rec in trace:
+            emit(fh, rec)
+
+    stats_out["n_honest_writes"] = len(honest_rows)
+    stats_out["n_adversarial_writes"] = len(adv_rows)
+    stats_out["n_total_writes"] = len(trace)
+    return stats_out
+
+
 def normalize_bookauthor(source_dir: str, out_path: str,
                          top_k: int,
                          gold_only: bool = True,
@@ -915,7 +1161,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset",
                     choices=["memoryagentbench", "longmemeval", "mquake",
-                             "bookauthor", "bookauthor_f14"],
+                             "bookauthor", "bookauthor_f14",
+                             "zheng_sentiment_f15"],
                     required=True)
     ap.add_argument("--source", required=True,
                     help="path to source dir (mab / bookauthor) or "
@@ -948,6 +1195,10 @@ def main() -> int:
         stats = normalize_bookauthor_f14(
             args.source, args.out, args.top_k,
             args.n_adversarial, args.adv_strategy, args.adv_seed)
+    elif args.dataset == "zheng_sentiment_f15":
+        stats = normalize_zheng_sentiment_f15(
+            args.source, args.out, args.top_k,
+            args.n_adversarial, args.adv_seed)
     else:
         print("unknown dataset", file=sys.stderr); return 2
 
