@@ -2,15 +2,23 @@
  * epistemic_am.c
  *
  * Table access method handler. Copies heapam's TableAmRoutine at first
- * handler call and overrides two entries:
+ * handler call and overrides three entries:
  *
  *   tuple_insert       -> epistemic_tuple_insert_impl (this file)
+ *   multi_insert       -> epistemic_multi_insert       (this file, F18)
  *   relation_toast_am  -> epistemic_relation_toast_am_impl
  *
- * Every other callback (~38 of them: scan, index-fetch, tuple_update,
+ * Every other callback (~37 of them: scan, index-fetch, tuple_update,
  * tuple_delete, tuple_lock, vacuum_rel, relation_size, freeze_lp,
  * TOAST helpers, parallel scan, sampling, ...) is heap's. Rows on
  * disk are plain heap tuples.
+ *
+ * The multi_insert override is the F18 fix for F9's COPY bypass. PG 18's
+ * CopyFrom (copyfrom.c:554-559 REL_18_STABLE) routes CIM_MULTI batches
+ * through table_multi_insert, which dispatches on the AM's `multi_insert`
+ * callback. Without the override, CopyFrom would call heap_multi_insert
+ * directly and skip every enforcement step. See the epistemic_multi_insert
+ * comment block for the tradeoff analysis.
  *
  * tuple_insert_impl runs four steps in order and then delegates:
  *   1. R1..R5 rule check              (epistemic_check_rules)
@@ -86,6 +94,10 @@ static bool epistemic_am_methods_initialized = false;
 static void epistemic_tuple_insert_impl(Relation rel, TupleTableSlot *slot,
 										CommandId cid, int options,
 										struct BulkInsertStateData *bistate);
+
+static void epistemic_multi_insert(Relation rel, TupleTableSlot **slots,
+								   int nslots, CommandId cid, int options,
+								   struct BulkInsertStateData *bistate);
 
 static void epistemic_audit_evicted(Relation rel, ItemPointer loser_tid,
 									ItemPointer winner_tid,
@@ -547,6 +559,62 @@ epistemic_tuple_insert_impl(Relation rel, TupleTableSlot *slot,
 }
 
 /*
+ * multi_insert callback. F18 closes the COPY bypass F9 discovered: PG 18's
+ * CopyFrom (src/backend/commands/copyfrom.c:554-559 REL_18_STABLE) routes
+ * batched inserts through table_multi_insert, which dispatches on the AM's
+ * `multi_insert` callback (access/tableam.h:527-529 REL_18_STABLE). Before
+ * F18, epistemic_am_methods inherited heapam's heap_multi_insert (bound at
+ * src/backend/access/heap/heapam_handler.c:2641 REL_18_STABLE), so every
+ * row in a COPY batch skipped R1..R5, the advisory lock, precedence, the
+ * eviction bookkeeping, and the rmgr-128 annotation record.
+ *
+ * COPY selects the insertion method in copyfrom.c:995-1006: if the target
+ * has a BEFORE/INSTEAD OF INSERT trigger, insertMethod = CIM_SINGLE and
+ * CopyFrom calls table_tuple_insert per row (which routed through our
+ * override and was safe). If not, insertMethod = CIM_MULTI and the batch
+ * flows into heap_multi_insert. That is the write path this callback covers.
+ *
+ * Implementation: iterate over slots[] and call epistemic_tuple_insert_impl
+ * on each. This is deliberately the same enforcement path as single-row
+ * INSERT — R1..R5, per-slot advisory xact lock, GetLatestSnapshot overlap
+ * probe, precedence compare, heap_insert, audit + sys_time close, WAL
+ * annotation — invoked N times. Correctness is byte-for-byte identical to
+ * a plain INSERT of the same N rows.
+ *
+ * Tradeoff. heap_multi_insert (heapam.c:2351 REL_18_STABLE) batches the
+ * WAL record per page and toasts in bulk; per-row epistemic_tuple_insert_impl
+ * pays one heap_insert per row and one WAL record per row. COPY into an
+ * epistemic table is therefore roughly at the throughput of an equivalent
+ * INSERT ... SELECT rather than of a plain-heap COPY. That is the acceptable
+ * cost of not silently skipping enforcement.
+ *
+ * F7 interaction. epistemic_tuple_insert_impl takes one advisory xact lock
+ * per row. A COPY of N rows now accumulates N locks in the shared lock
+ * table. At the PG default max_locks_per_transaction=64 the ceiling is
+ * ~15k rows per transaction (F7 characterization in
+ * scripts/lock_exhaustion.sh). COPY inherits that ceiling. Raising
+ * max_locks_per_transaction moves it linearly. We do NOT drop the lock in
+ * this path — doing so would silently re-open the RC integrity leak F6
+ * closed.
+ *
+ * The `options` and `bistate` arguments are forwarded to each per-row
+ * heap_insert via epistemic_tuple_insert_impl's delegation to the heapam
+ * tuple_insert callback (epistemic_am.c line ~507). Any HEAP_INSERT flags
+ * COPY sets (TABLE_INSERT_SKIP_FSM at copyfrom.c:851 and TABLE_INSERT_FROZEN
+ * at copyfrom.c:908) reach heap_insert unchanged.
+ */
+static void
+epistemic_multi_insert(Relation rel, TupleTableSlot **slots, int nslots,
+					   CommandId cid, int options,
+					   struct BulkInsertStateData *bistate)
+{
+	int			i;
+
+	for (i = 0; i < nslots; i++)
+		epistemic_tuple_insert_impl(rel, slots[i], cid, options, bistate);
+}
+
+/*
  * Insert one row into epistemic.evicted_fact describing the incumbent
  * that lost the precedence comparison. Uses SPI so the JSONB payload is
  * built by to_jsonb on the live server row rather than reconstructed
@@ -728,6 +796,7 @@ epistemic_am_handler(PG_FUNCTION_ARGS)
 		epistemic_am_methods = *heapam;
 		epistemic_am_methods.type = T_TableAmRoutine;
 		epistemic_am_methods.tuple_insert = epistemic_tuple_insert_impl;
+		epistemic_am_methods.multi_insert = epistemic_multi_insert;
 		epistemic_am_methods.relation_toast_am = epistemic_relation_toast_am_impl;
 		epistemic_am_methods_initialized = true;
 	}

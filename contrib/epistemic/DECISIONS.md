@@ -4,6 +4,195 @@ Short notes recording load-bearing design choices and, where useful, the
 audit that produced them. New entries go on top. Each entry is dated and
 identifies the code paths involved.
 
+## 2026-07-12, F18: close F9's COPY bypass via multi_insert override
+
+F9 identified the last one-line hole in F2's bypass-unbypassability
+claim. PG 18's CopyFrom (src/backend/commands/copyfrom.c:995-1006
+REL_18_STABLE) selects `insertMethod = CIM_MULTI` when the target
+has no BEFORE/INSTEAD OF INSERT trigger, then buffers ~1000-tuple
+batches and flushes them through `table_multi_insert` at
+copyfrom.c:554-559. `table_multi_insert` (access/tableam.h:1421-1427
+REL_18_STABLE) dispatches on the AM's `multi_insert` callback
+(access/tableam.h:527-529). Before F18 the epistemic AM copied
+heapam's `TableAmRoutine` and inherited `heap_multi_insert`
+(src/backend/access/heap/heapam_handler.c:2641 REL_18_STABLE), so
+every COPY-batched row skipped:
+
+  * R1..R5 rule checks (epistemic_check_rules)
+  * per-slot advisory xact lock (F6)
+  * find_live_overlap probe + xmin precedence tiebreak (F8)
+  * eviction bookkeeping (audit row + sys_time close)
+  * rmgr-128 annotation record
+
+That was a silent bypass — no error, the bad rows landed. The
+tuple_insert override was untouched by it, so INSERT stayed safe,
+but COPY into an epistemic table effectively ran as plain heap
+storage with none of the epistemic contract. The finding was one
+line: heap_multi_insert lives inside heapam.c; our tuple_insert
+delegation to `heapam->tuple_insert` at epistemic_am.c:507 never
+routed COPY's batched flushes through it.
+
+Choice: full override, not loud rejection. Two reasons.
+
+  1. COPY is the standard bulk-load path. pg_restore uses it
+     (copyfrom.c is invoked from restore's regenerated `\copy`
+     statements). Refusing COPY would break `pg_dump | pg_restore`
+     for any table USING epistemic — an unacceptable regression
+     for a claim about correctness over throughput.
+  2. The enforcement path is already factored: epistemic_tuple_insert_impl
+     runs R1..R5, the advisory lock, the overlap probe, precedence,
+     heap_insert delegation, audit, sys_time close, and the WAL
+     marker in one function. A multi_insert override that iterates
+     over slots[] and calls epistemic_tuple_insert_impl per row
+     reuses every mechanism with zero semantic drift.
+
+Implementation. src/epistemic_am.c gets one new static function
+`epistemic_multi_insert(rel, slots, nslots, cid, options, bistate)`
+whose body is a for loop calling `epistemic_tuple_insert_impl(rel,
+slots[i], cid, options, bistate)`. The handler assignment block
+adds one line: `epistemic_am_methods.multi_insert =
+epistemic_multi_insert`. Header comment at top of file updated to
+list three overrides (tuple_insert, multi_insert, relation_toast_am)
+instead of two. Total new source: ~55 lines including the ~50-line
+comment block explaining the tradeoff.
+
+Tradeoff. heap_multi_insert (heapam.c:2351 REL_18_STABLE) toasts
+in bulk, packs tuples onto pages with amortized allocation, and
+emits one XLOG_HEAP2_MULTI_INSERT WAL record per page. The
+per-slot fanout of epistemic_multi_insert pays one heap_insert per
+row and one WAL record per row. COPY into an epistemic table
+therefore runs at roughly the throughput of an equivalent
+INSERT ... SELECT rather than of a plain-heap COPY. That is the
+acceptable cost of not silently skipping enforcement.
+
+Adversarial disable-and-test. Standard F1 discipline: source-rebuild,
+dylib hash flip, script asserts flip.
+
+  * F18 baseline (multi_insert wiring ON):
+      sha256 = eb15d442dd1eace588c1c4ee4fab3e183addc70cc3a28773f8d5acfc0ff58af0
+      scripts/bypass.sh COPY-FROM cell:
+        fact_native COPY_FROM rows_after  = 0 (expected 0)  OK
+        fact_native COPY_FROM raised_R3   = 1 (expected 1)  OK
+        fact_native COPY_5rows rows_after = 0 (expected 0)  OK  (mixed batch)
+        fact_native COPY_5rows raised_R3  = 1 (expected 1)  OK
+      trigger baseline (fact_trigger with BEFORE INSERT trigger)
+      routes through CIM_SINGLE and the trigger fires — bad row
+      is also rejected, but that is the CopyFrom line-1005 branch,
+      not F18. When the writer disables the trigger, bypass
+      scenarios 1 and 2 already cover that.
+
+  * Patched OFF (multi_insert wiring line commented out, rebuilt):
+      sha256 = 302bb93b2c3b7f02ebf0bd88d95a85cc29f73539741b96965893348bc75abab5
+      scripts/bypass.sh COPY-FROM cell:
+        fact_native COPY_FROM rows_after  = 1 (expected 0)  FAIL
+        fact_native COPY_FROM raised_R3   = 0 (expected 1)  FAIL
+        fact_native COPY_5rows rows_after = 5 (expected 0)  FAIL
+        fact_native COPY_5rows raised_R3  = 0 (expected 1)  FAIL
+      Transcript literally reads "COPY 1" and "COPY 5" — the AM's
+      overlap/rules pipeline is bypassed, all rows land, no error.
+      That is the bypass F9 discovered, cleanly reproduced.
+
+  * Restored (byte-identical source, rebuilt again):
+      sha256 back to eb15d442... — restored guard exit 0.
+      bypass.sh back to PASS with all COPY assertions OK.
+
+F7 interaction (batch-size ceiling under COPY). The F6 per-slot
+advisory xact lock is now taken per-row in the COPY path too. A
+COPY of N distinct-slot rows accumulates N locks in the shared lock
+table (NLOCKENTS = max_locks_per_xact * (MaxBackends +
+max_prepared_xacts), src/backend/storage/lmgr/lock.c:56-57
+REL_18_STABLE). Same ceiling F7 documented under INSERT
+(~15,000 rows at PG default max_locks_per_transaction=64) applies
+under COPY. scripts/bypass.sh sweeps N ∈ {100, 1000, 10000, 20000}
+via real `\copy` from a CSV tempfile and asserts:
+
+    N=100     OK  (100 rows land)
+    N=1000    OK  (1000 rows land)
+    N=10000   OK  (10000 rows land)
+    N=20000   FAIL — ERROR: 53200 out of shared memory
+                     HINT: You might need to increase
+                     "max_locks_per_transaction"
+                     LOCATION: LockAcquireExtended, lock.c:1080
+
+Same first-failing-N grid F7 hit with INSERT. This is inherited
+behaviour, not a new limit. We do NOT drop the advisory lock in the
+multi_insert path — doing so would silently re-open the RC
+integrity leak F6 closed (concurrent same-slot writers both commit,
+two live rows land). The 15k-row ceiling is the T1-a tradeoff the
+user already accepted at F8; F18 extends its scope from INSERT to
+COPY without loosening the design.
+
+With the multi_insert wiring OFF (disable-and-test), 20000-row COPY
+succeeded (heap_multi_insert takes no advisory locks). That
+strengthens the F7 interaction claim: the ceiling under COPY is a
+direct consequence of routing through our per-row enforcement path,
+not an artifact of PG's own machinery.
+
+Threat model scope updated in README:
+
+  * ALTER TABLE ... DISABLE TRIGGER ALL — blocked (F2)
+  * SET session_replication_role = 'replica' — blocked (F2)
+  * COPY FROM (CIM_MULTI batch path) — blocked (F18)
+  * COPY FROM (CIM_SINGLE path) — already blocked pre-F18
+    (single-row path calls table_tuple_insert)
+  * INSERT / INSERT ... SELECT / INSERT ... VALUES — blocked
+    (ExecInsert calls table_tuple_insert)
+  * ALTER TABLE ... SET ACCESS METHOD heap — out of scope,
+    schema-change threat
+  * Logical replication apply worker — routes through
+    ExecSimpleRelationInsert -> ExecInsert -> table_tuple_insert,
+    so the AM callback fires even under
+    SESSION_REPLICATION_ROLE_REPLICA. Documented; no dedicated
+    test cell.
+
+Full-suite validation:
+
+  * installcheck: 6/6 (type, precedence, wal, am_basic, r2_sources,
+                       am_eviction) unchanged.
+  * check-e2e:    8/8 (recovery, concurrency, bypass, crash_atomicity,
+                       tie_concurrency, rc_invariant, tie_determinism,
+                       deadlock_detection) unchanged as script count.
+                       bypass.sh now runs 3 bypass scenarios (was 2)
+                       and one F7-interaction cell (new); all 12
+                       internal assertions match expected.
+  * verify_dylib.sh: exit 0 with sha256 =
+                     eb15d442dd1eace588c1c4ee4fab3e183addc70cc3a28773f8d5acfc0ff58af0
+
+Files touched:
+
+  * src/epistemic_am.c — added `epistemic_multi_insert` static
+    function (~10 LOC + ~50 LOC comment) and one line in the
+    handler-init block wiring `.multi_insert`. Top-of-file header
+    comment updated to enumerate three overrides. Diff is
+    additive; every existing byte in epistemic_tuple_insert_impl
+    and its callers is unchanged.
+  * scripts/bypass.sh — preamble comment now enumerates three
+    bypass mechanisms; added `attempt_copy_bad_row` helper;
+    added scenarios "bypass 3" (single-row COPY, one bad row,
+    both fact_trigger and fact_native), "bypass 3b" (5-row batch
+    with 1 bad row into fact_native), and the F7 interaction
+    sweep (real `\copy` at N ∈ {100, 1000, 10000, 20000} with
+    verbose 20000 error probe).
+  * README.md — Overview mentions multi_insert wrapper. What-is-
+    load-bearing mentions the multi_insert callback and the F18
+    disable-and-test. Batch-size-ceiling paragraph notes COPY
+    now inherits the ceiling. Threat-model section enumerates
+    seven write-path bypass surfaces with PG 18 file:line
+    citations. Layout mentions multi_insert. Baseline-counts
+    line updated to note bypass.sh runs more assertions.
+
+Nothing surprising in PG 18's COPY path. The CIM_SINGLE gate at
+copyfrom.c:995-1006 is exactly the escape hatch that made the pre-F18
+partial safety possible (a target with a BEFORE INSERT trigger forced
+CIM_SINGLE and the tuple_insert override was reached). CopyFrom
+buffers up to 1000 tuples per batch (MAX_BUFFERED_TUPLES at
+copyfrom.c:63); a single-slot ~1M-row COPY still trips the F7
+ceiling well before the buffer size ever matters. The `options` /
+`bistate` fields (TABLE_INSERT_SKIP_FSM at copyfrom.c:851,
+TABLE_INSERT_FROZEN at copyfrom.c:908) are forwarded unchanged
+through epistemic_tuple_insert_impl to heap_insert; no epistemic
+enforcement depends on them.
+
 ## 2026-07-12, F17: Sybil vulnerability theorem and KNDB kind invariance
 
 Two-item followup to F16. Item 1 (already in tree,
