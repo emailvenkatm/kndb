@@ -5,6 +5,8 @@
     "contested_slots": 11872,
     "correct_on_contested": 10237,
     "correctness_rate": 0.8622809973045822,
+    "correctness_rate_ignoring_integrity": 0.8622809973045822,
+    "integrity_status": "FAIL",
     "missing_live_rows": 0,
     "multiple_live_rows": 16,
     "sample_misses": [

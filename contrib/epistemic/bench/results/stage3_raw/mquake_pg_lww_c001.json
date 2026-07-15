@@ -10,6 +10,12 @@
     "all_slots_correct": 6015,
     "contested_slots": 6015,
     "correct_on_contested": 6015,
+    "integrity": {
+      "construction_reason": "single writer, trigger sees own live rows",
+      "measured_via": "by_construction",
+      "n_slots_with_gt_1_live": 0
+    },
+    "integrity_status": "PASS",
     "missing_live_rows": 0,
     "n_cases": 3000,
     "n_cases_full_correct": 3000

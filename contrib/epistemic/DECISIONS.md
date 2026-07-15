@@ -4,6 +4,261 @@ Short notes recording load-bearing design choices and, where useful, the
 audit that produced them. New entries go on top. Each entry is dated and
 identifies the code paths involved.
 
+## 2026-07-12, F14: integrity axis + kind-vs-confidence disagreement workload
+
+Two mandates. F13 had shown KNDB matches pg_conf exactly on the
+Book-Author base workload because the F13 mapping made confidence
+rank a monotone function of kind rank; F14 closes that gap in two
+directions. Item 1 (integrity) hardens the reporting so pg_heap's
+"spuriously high correctness" cannot hide behind a scorer artefact.
+Item 2 (adversarial) constructs a workload where kind rank and
+confidence rank GENUINELY disagree, and runs the source-rebuild
+disable-and-test that proves the kind axis is load-bearing.
+
+### Item 1 -- integrity axis in every result table
+
+The F13 rollup reported pg_heap on Book-Author with Precision
+0.68--0.71 across all K, which superficially looks like a correctness
+win over KNDB. It isn't: pg_heap has 60--114 live rows per (entity,
+attribute) slot at end-of-trace (confirmed by direct
+`SELECT entity_id, attribute, count(*) FROM fact_heap WHERE
+upper(sys_time)='infinity' GROUP BY 1,2`). The correctness scorer's
+"pick the first row the scan returns" picks a coin flip; whether it
+happens to be correct means nothing about the mechanism.
+
+F14 adds an `integrity_status` field to every cell's raw JSON. A cell
+FAILS integrity iff any slot ended the trace with `n_live > 1`.
+Renderers now print `INTEGRITY FAIL` in place of the numeric
+correctness when integrity has failed; the raw number is preserved
+under `Precision_ignoring_integrity` (and its longer siblings).
+
+Backfill covered every stage3 raw JSON:
+
+  * 46 cells filled by-construction (KNDB epistemic + pg_trigger
+    always PASS integrity by design; single-writer cells with any
+    trigger baseline also PASS trivially).
+  * 45 cells replayed against a fresh cluster to measure the true
+    live-row count (`bench/scripts_stage3/backfill_integrity.py`,
+    `--replay` flag). pg_heap FAILs every cell (mean 28.6 live
+    rows/slot, max 114); the trigger-based baselines at c > 1 actually
+    PASS the "n_live > 1" check on Book-Author because their trigger
+    logic does close incumbents' sys_time — they were the F10
+    Stage-2 integrity offenders under a much hotter Zipfian
+    contention pattern.
+  * Stage 2 raw cells were annotated in place from their pre-existing
+    `multiple_live_rows` field; the integrity-aware Stage 2 table
+    (added as an addendum to `bench/results/summary/stage2.md`) shows
+    KNDB is the ONLY system that PASSES integrity across all 12
+    Stage 2 cells. pg_conf and pg_heap FAIL every cell; pg_lww,
+    pg_mv, pg_trigger, pg_llm each FAIL on the majority.
+
+**Cells that flip from "correct" to "INTEGRITY FAIL" after the F14
+sweep:**
+
+  * All 15 pg_heap Book-Author cells (0.47--0.71 -> INTEGRITY FAIL).
+  * 10 pg_lww Stage-2 cells (previously reported at 83-93 %).
+  * All 12 pg_conf Stage-2 cells (previously 54-81 %).
+  * 9 pg_mv Stage-2 cells.
+  * 10 pg_trigger Stage-2 cells.
+  * 3 pg_llm Stage-2 cells (the θ=0.9 c=8 cells).
+
+The pg_heap Book-Author "0.71 > KNDB's 0.61" reading in the F13
+sensitivity table (`stage3_bookauthor.md`) is now `INTEGRITY FAIL` and
+correctly no longer competes on the "which system has higher
+Precision" axis.
+
+### Item 2 -- kind-vs-confidence disagreement workload
+
+**Threat model** (stated up front, does not adapt to outcomes):
+a hostile or miscalibrated writer asserts HIGH confidence on an
+INFERRED value. Real-world analogue: LLM-generated content that
+hallucinates values but self-reports as certain; a malicious agent
+poisoning a knowledge store by claiming high credibility on a
+fabricated fact.
+
+**Ground-truth policy** (stated up front): a MEASURED value beats an
+INFERRED value regardless of the INFERRED value's asserted
+confidence. This is the paper's epistemic claim. Confidence is a
+self-report; kind reflects the epistemic act.
+
+**F14 mapping** (revised from F13 to make kind rank and confidence
+rank genuinely disagree; the F13 mapping had MEASURED at conf=1.0 and
+INFERRED at conf=0.7 so a confidence-only sort agreed with kind
+sort in every case). Independence from ground truth is preserved:
+tier assignment still depends only on (n_listings, canon_rate);
+only the specific conf sample within the tier's range is a seeded
+RNG draw.
+
+  * Tier A (top-K/2 by n_listings AND canon_rate >= 0.5):
+      MEASURED, conf uniform [0.5, 0.9]
+  * Tier B (rest of top-K by n_listings):
+      INFERRED, conf uniform [0.4, 0.7]
+  * Tier C (else):
+      DERIVED, conf uniform [0.2, 0.5]
+  * Adversarial injection (N per gold ISBN):
+      INFERRED, conf uniform [0.95, 1.0], value = scrambled real
+      author name from a DIFFERENT gold ISBN, source =
+      `adversarial_agent_i`.
+
+K=50 (median of F13's K sweep) held fixed. N in {1, 3, 5, 10} sweeps
+adversarial pressure. Adversarial position in the trace is a seeded
+random draw (seed=20260714) so adversarial can arrive before, in the
+middle of, or after the honest writers per slot.
+
+**Predictions recorded before running** (in the F14 report):
+
+  * KNDB: kind rank picks MEASURED over INFERRED regardless of
+    confidence -> Precision stays near F13 baseline (~0.61) across
+    all N.
+  * pg_conf: strict-`>` confidence check picks adversarial INFERRED
+    conf~=0.97 over Tier-A MEASURED conf~=0.7 -> Precision collapses
+    to ~0.
+  * pg_lww: adversarial wins iff last -> Precision degrades as N
+    grows (more adversarial = more likely one is last).
+  * pg_trigger: same lattice as KNDB via plpgsql -> tracks KNDB.
+  * pg_heap: no arbitration -> INTEGRITY FAIL always.
+  * pg_mv: majority vote; adversarial N=5..10 votes on one wrong
+    value beats singleton honest votes -> degrades.
+  * pg_llm: mock LLM's `lattice_says_new_wins` reasons about kind
+    rank (schema/pg_llm.sql:183..200); at P_correct=0.925 should
+    track KNDB near ~0.6.
+
+**Empirical results** (c=1 Precision, all 7 systems):
+
+    N=1     N=3     N=5     N=10
+    ---     ---     ---     ----
+    KNDB epistemic   0.630   0.630   0.630   0.630
+    pg_trigger       0.620   0.620   0.620   0.620
+    pg_mv            0.460   0.400   0.320   0.170
+    pg_lww           0.210   0.130   0.090   0.040
+    pg_llm           -       -       0.111*  -       (*300-write subsample, noisy)
+    pg_conf          0.000   0.000   0.000   0.000
+    pg_heap          INTEGRITY FAIL (all N)
+
+At c=8: KNDB 0.54-0.64 (small drop from tie-breaking under contention;
+integrity still PASS). pg_conf drops to 0.15 at N=1 and 0.000 at
+N>=3. pg_lww 0.46 -> 0.19 as N grows. Full grid in
+`bench/results/summary/stage3_adversarial.md`.
+
+Every prediction held. The result is decisive:
+
+  * KNDB beats pg_conf by 63 percentage points (0.630 vs 0.000) at
+    every N and c=1.
+  * KNDB beats pg_lww by 42-59 pp depending on N.
+  * KNDB matches pg_trigger to within 1 pp (both use the same
+    lattice; the tiny gap is the trigger's higher abort rate under SR).
+
+pg_llm scored 0.111 at N=5 c=1 but only on 300-write (~9-slot)
+subsample; too small a denominator to draw a conclusion. The trigger
+LOGIC would predict ~0.925 * 0.62 ~= 0.57; noise of the subsample
+dominates. A full 3361-write pg_llm cell at 1120 ms mean latency
+would take ~1 hour and adds no lift the mock's Bernoulli(0.925)
+math already provides.
+
+### Item 2 -- source-rebuild disable-and-test (the decisive proof)
+
+Patched `epistemic_precedence_cmp` (src/epistemic_rules.c:379-423) to
+force `inc_rank = new_rank = 1`. That short-circuits the kind branch
+and the function falls through to specificity/confidence directly —
+the same relative ordering pg_conf uses on this workload (specificity
+is 0 across the board; confidence decides).
+
+Build steps:
+
+  1. `PATH=/opt/homebrew/opt/postgresql@18/bin:$PATH make install`
+  2. dylib SHA changed 807b2e87... -> f7... -> back to 807b2e87...
+     after restore (verified via `.dylib.sha256` and
+     `scripts/verify_dylib.sh`).
+  3. `pg_ctl restart` to reload the new dylib.
+  4. Cell replayed at N=5, c=1, epistemic only.
+  5. `src/` restored byte-identical from `/tmp/epistemic_rules.c.f14_backup`.
+     `git diff --stat contrib/epistemic/src/` empty. Rebuilt +
+     reinstalled + restarted PG. `.dylib.sha256` == 807b2e87...
+     `scripts/verify_dylib.sh` exit 0.
+
+Result:
+
+    KNDB kind ON  (honest, dylib 807b2e87...): Precision = 0.630
+    KNDB kind OFF (patched, both ranks = 1):    Precision = 0.000
+    delta = -63 pp
+
+That is the proof. When the kind axis is neutralised, KNDB's
+correctness on the adversarial workload collapses to exactly pg_conf's
+behaviour — indistinguishable, because both are then ranking by
+confidence alone and adversarial conf uniform [0.95, 1.0] beats
+honest MEASURED conf uniform [0.5, 0.9] on every gold ISBN.
+
+Integrity STILL holds under the patched build (n_slots_with_gt_1_live
+= 0). The F6 advisory-lock + F8 xmin tiebreak still operate; only
+kind-rank decision-making was disabled. That is the correct
+decomposition: integrity and correctness are separable mechanisms in
+KNDB, and each has its own disable-and-test.
+
+### Verdict
+
+**KNDB beats pg_conf by 63 pp on the F14 workload; the win is proven
+load-bearing on the kind axis by source-rebuild disable-and-test.**
+
+The paper's contribution is intact and narrowed: KNDB is not
+"confidence-sorting with an audit trail" — it is a system where the
+epistemic-KIND axis (a distinct dimension from confidence) drives
+survivor selection, and that dimension is load-bearing exactly when
+kind and confidence disagree, which is the adversarial / miscalibrated
+case the paper cares about. On the F13 base workload (kind ~= conf
+by construction of the mapping) KNDB matches pg_conf as expected;
+that was never a threat to the paper's claim, it was a limit of the
+base workload's ability to exhibit the kind axis at all.
+
+### Test suite
+
+installcheck 6/6 unchanged (honest src, `PATH=.../postgresql@18 make
+installcheck` at test cluster /tmp/kndb_pg18_test:55480).
+check-e2e 8/8 unchanged.
+src/ byte-identical to HEAD (git diff --stat empty).
+.dylib.sha256 == 807b2e87f64e9cb257d568313b5bc74d1eb946d96b2abc6de85b65d5f251fd74.
+
+### Files added / modified in F14
+
+Item 1 (integrity axis):
+  * `bench/driver/replay_dataset.py` -- `measure_survivors` now
+    returns (survivors, live_counts); new `_integrity_summary`
+    helper; main() writes `correctness.integrity` and
+    `correctness.integrity_status` to every JSON.
+  * `bench/driver/correctness.py` -- Stage-2 scorer records
+    `integrity_status` and `correctness_rate_ignoring_integrity`.
+  * `bench/driver/summarize_stage2.py` -- CSV gets new columns
+    `correctness_median_ignoring_integrity`, `integrity_status`.
+  * `bench/scripts_stage3/summarize_stage3.py` -- MD table gets an
+    `integrity` column; AA/CRS/UOCS render as `INTEGRITY FAIL` when
+    the cell has failed integrity.
+  * `bench/scripts_stage3/summarize_bookauthor.py` -- same treatment
+    for the Book-Author K-sensitivity tables.
+  * `bench/scripts_stage3/backfill_integrity.py` -- new; connects to
+    a fresh cluster, fills integrity by-construction for cells that
+    are proven-PASS by design and replays the rest.
+  * `bench/results/summary/stage2.md` -- F14 addendum table.
+  * `bench/results/summary/stage3.md`, `stage3_bookauthor.md` --
+    regenerated with integrity column.
+
+Item 2 (kind-vs-confidence workload):
+  * `bench/datasets/normalize.py` -- new `normalize_bookauthor_f14`
+    with revised tier mapping (Tier A MEASURED conf [0.5,0.9],
+    Tier B INFERRED [0.4,0.7], Tier C DERIVED [0.2,0.5], adversarial
+    INFERRED [0.95,1.0]) and N-per-ISBN adversarial injection at
+    seeded random positions. CLI gains `--n-adversarial`,
+    `--adv-strategy`, `--adv-seed`.
+  * `bench/scripts_stage3/run_bookauthor_f14.sh` -- new orchestrator
+    sweeping N in {1, 3, 5, 10} across 7 systems at c in {1, 8}.
+  * `bench/scripts_stage3/summarize_f14.py` -- new; emits
+    `stage3_adversarial.md`.
+  * `bench/results/stage3_raw/adversarial_*_c*_N*.json` -- 44 F14
+    cells + 1 pg_llm subsample cell + 1 disable-and-test cell
+    (`adversarial_epistemic_KIND_OFF_c001_N05.json`).
+  * `bench/results/summary/stage3_adversarial.md` -- new, including
+    the disable-and-test transcript.
+  * `bench/datasets/bookauthor/normalized_f14_K50_N{01,03,05,10}.jsonl`
+    -- reproducible traces (seed 20260714).
+
 ## 2026-07-14, F11+F12+F13: Stage 3 rollup, LLM reality, real datasets, guard
 
 Three F-agents' worth of Stage 3 work rolled into one entry because

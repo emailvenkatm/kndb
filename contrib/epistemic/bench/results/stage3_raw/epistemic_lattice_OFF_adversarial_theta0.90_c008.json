@@ -5,6 +5,12 @@
     "contested_slots": 25617,
     "correct_on_contested": 20569,
     "correctness_rate": 0.802943357926377,
+    "integrity": {
+      "construction_reason": "lattice + SR isolation or advisory lock",
+      "measured_via": "by_construction",
+      "n_slots_with_gt_1_live": 0
+    },
+    "integrity_status": "PASS",
     "missing_live_rows": 74383,
     "multiple_live_rows": 0,
     "sample_misses": [

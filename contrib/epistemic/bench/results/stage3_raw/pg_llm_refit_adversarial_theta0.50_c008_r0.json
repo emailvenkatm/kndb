@@ -5,6 +5,11 @@
     "contested_slots": 3705,
     "correct_on_contested": 3693,
     "correctness_rate": 0.9967611336032388,
+    "integrity": {
+      "measured_via": "not_measured",
+      "note": "F14 backfill did not replay non-bookauthor stage3 cells; use multi_live_rows if present or replay to determine"
+    },
+    "integrity_status": "NOT_MEASURED",
     "missing_live_rows": 96295,
     "multiple_live_rows": 1,
     "sample_misses": [

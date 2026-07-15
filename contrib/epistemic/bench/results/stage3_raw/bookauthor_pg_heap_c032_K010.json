@@ -3,12 +3,24 @@
   "conf_mode": "on",
   "correctness": {
     "AA": 0.49,
+    "AA_ignoring_integrity": 0.49,
     "Precision": 0.49,
+    "Precision_ignoring_integrity": 0.49,
     "all_slot_accuracy": 0.49,
     "all_slots": 100,
     "all_slots_correct": 49,
     "contested_slots": 100,
     "correct_on_contested": 49,
+    "integrity": {
+      "integrity_status": "FAIL",
+      "max_live_rows_per_slot": 114,
+      "mean_live_rows_per_slot": 28.61,
+      "measured_via": "replay_backfill",
+      "n_live_slots": 100,
+      "n_slots_with_gt_1_live": 100,
+      "sum_excess_live_rows": 2761
+    },
+    "integrity_status": "FAIL",
     "missing_live_rows": 0
   },
   "dataset": "bookauthor",

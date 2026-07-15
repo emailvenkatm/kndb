@@ -262,23 +262,32 @@ def worker(
 # --------------------------------------------------------------------
 
 def measure_survivors(conn: psycopg.Connection, system: str,
-                      trace: List[Dict[str, Any]]) -> Dict[Tuple[int, str], str]:
+                      trace: List[Dict[str, Any]]
+                      ) -> Tuple[Dict[Tuple[int, str], str],
+                                 Dict[Tuple[int, str], int]]:
     """
-    Return {(entity_id, attribute) -> live value}. Live = one row with
-    upper(sys_time) = 'infinity'. If more than one, keep the first
-    returned by the scan (we count integrity violations separately).
+    Return (survivors, live_counts):
+      survivors: {(entity_id, attribute) -> live value}  (first-seen)
+      live_counts: {(entity_id, attribute) -> n live rows in that slot}
+
+    Live = row with upper(sys_time) = 'infinity'. If more than one, we
+    keep the first-returned as `survivor` (this is the F13-era
+    behaviour that made pg_heap's Precision look like a correctness win
+    — F14 exposes the integrity gap explicitly via live_counts).
     """
     table = SYSTEM_TABLE_EXT[system]
     survivors: Dict[Tuple[int, str], str] = {}
+    live_counts: Dict[Tuple[int, str], int] = {}
     with conn.cursor() as cur:
         cur.execute(
             f"SELECT entity_id, attribute, value FROM {table} "
             f"WHERE upper(sys_time) = 'infinity'::timestamptz")
         for eid, attr, val in cur.fetchall():
             key = (int(eid), attr)
+            live_counts[key] = live_counts.get(key, 0) + 1
             if key not in survivors:
                 survivors[key] = val
-    return survivors
+    return survivors, live_counts
 
 
 def _normalize_author_str(s: str) -> str:
@@ -318,6 +327,37 @@ def _bookauthor_match(sur: str, gt: str) -> bool:
     a_toks = set(a.split())
     b_toks = set(b.split())
     return b_toks.issubset(a_toks)
+
+
+def _integrity_summary(live_counts: Dict[Tuple[int, str], int]
+                       ) -> Dict[str, Any]:
+    """
+    Summarise per-slot live-row counts. A slot with n_live > 1 is an
+    integrity failure (violates "exactly one live row per (entity_id,
+    attribute)" at end-of-trace). We report the full distribution so
+    the summary tables can label cells INTEGRITY FAIL when appropriate.
+    """
+    counts = list(live_counts.values())
+    n_slots_total = len(counts)
+    if not counts:
+        return {
+            "n_live_slots": 0,
+            "max_live_rows_per_slot": 0,
+            "mean_live_rows_per_slot": 0.0,
+            "n_slots_with_gt_1_live": 0,
+            "sum_excess_live_rows": 0,
+            "integrity_status": "PASS",
+        }
+    n_gt_1 = sum(1 for c in counts if c > 1)
+    excess = sum(c - 1 for c in counts if c > 1)
+    return {
+        "n_live_slots": n_slots_total,
+        "max_live_rows_per_slot": max(counts),
+        "mean_live_rows_per_slot": sum(counts) / n_slots_total,
+        "n_slots_with_gt_1_live": n_gt_1,
+        "sum_excess_live_rows": excess,
+        "integrity_status": "FAIL" if n_gt_1 > 0 else "PASS",
+    }
 
 
 def score_correctness(dataset: str, trace: List[Dict[str, Any]],
@@ -520,11 +560,25 @@ def main() -> int:
     # Score survivors.
     survivor_conn = psycopg.connect(args.dsn, autocommit=True)
     try:
-        survivors = measure_survivors(survivor_conn, args.system, trace)
+        survivors, live_counts = measure_survivors(
+            survivor_conn, args.system, trace)
     finally:
         survivor_conn.close()
 
     corr = score_correctness(args.dataset, trace, survivors)
+    integrity = _integrity_summary(live_counts)
+    # Attach integrity to correctness dict. Rename the "correctness"
+    # numbers as `_ignoring_integrity` so downstream readers know they
+    # do NOT reflect the "exactly one live row per slot" invariant.
+    corr["integrity"] = integrity
+    corr["integrity_status"] = integrity["integrity_status"]
+    corr["AA_ignoring_integrity"] = corr["AA"]
+    if "Precision" in corr:
+        corr["Precision_ignoring_integrity"] = corr["Precision"]
+    if "CRS_KU_Acc" in corr:
+        corr["CRS_KU_Acc_ignoring_integrity"] = corr["CRS_KU_Acc"]
+    if "UOCS" in corr:
+        corr["UOCS_ignoring_integrity"] = corr["UOCS"]
 
     # Aggregate metrics using stage-1 aggregator's math.
     meas_seconds = max(1e-3, t_end - t_start)

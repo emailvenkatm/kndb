@@ -23,6 +23,8 @@ def parse_cell(path: str):
         return None
     with open(path) as f:
         d = json.load(f)
+    corr = d["correctness"]
+    integ = corr.get("integrity") or {}
     return {
         "system": m["sys"],
         "c": int(m["c"]),
@@ -30,12 +32,28 @@ def parse_cell(path: str):
         "n_writes": d["n_writes_attempted"],
         "tps": d["metrics"]["throughput_writes_per_s"],
         "abort_rate": d["metrics"]["abort_rate"],
-        "AA": d["correctness"]["AA"],
-        "Precision": d["correctness"].get("Precision",
-                                          d["correctness"]["AA"]),
+        "AA": corr["AA"],
+        "Precision": corr.get("Precision", corr["AA"]),
         "goodput": d["goodput_correct_writes_per_s"],
         "elapsed_s": d["elapsed_s"],
+        "integrity_status": corr.get("integrity_status", "NOT_MEASURED"),
+        "n_gt_1_live": integ.get("n_slots_with_gt_1_live"),
+        "max_live_per_slot": integ.get("max_live_rows_per_slot"),
+        "mean_live_per_slot": integ.get("mean_live_rows_per_slot"),
     }
+
+
+def _prec_cell(r) -> str:
+    """
+    Render the Precision cell. If integrity FAILED for this cell, we
+    print the F14-mandated 'INTEGRITY FAIL' string in place of the raw
+    number — a numerically-high correctness score against a table with
+    28+ live rows per slot is a scorer artefact, not a real signal.
+    The raw value stays in the JSON under `Precision_ignoring_integrity`.
+    """
+    if r["integrity_status"] == "FAIL":
+        return "INTEGRITY FAIL"
+    return f"{r['Precision']:.3f}"
 
 
 def main() -> int:
@@ -73,9 +91,9 @@ def main() -> int:
         out_lines.append(f"\n## K = {K}\n")
         out_lines.append(
             "| system | c | n_writes | tps | abort_rate | Precision | "
-            "goodput | elapsed_s |")
+            "integrity | goodput | elapsed_s |")
         out_lines.append(
-            "|---|---|---|---|---|---|---|---|")
+            "|---|---|---|---|---|---|---|---|---|")
         for s in systems:
             for c in Cs:
                 match = [r for r in rows
@@ -84,14 +102,28 @@ def main() -> int:
                 if not match:
                     continue
                 r = match[0]
+                integ_txt = r["integrity_status"]
+                if integ_txt == "FAIL":
+                    integ_txt = f"FAIL (max={r['max_live_per_slot']}, "\
+                        f"mean={r['mean_live_per_slot']:.1f})"
                 out_lines.append(
                     f"| {r['system']} | {r['c']} | {r['n_writes']} | "
                     f"{r['tps']:.1f} | {r['abort_rate']:.3f} | "
-                    f"{r['Precision']:.3f} | {r['goodput']:.1f} | "
-                    f"{r['elapsed_s']:.2f} |")
+                    f"{_prec_cell(r)} | {integ_txt} | "
+                    f"{r['goodput']:.1f} | {r['elapsed_s']:.2f} |")
 
     # Sensitivity table: pivot Precision by (system, K) at c=1.
-    out_lines.append("\n## Sensitivity of Precision to K (c=1)\n")
+    # F14 note: cells with integrity_status=FAIL show "INTEGRITY FAIL"
+    # instead of a number. pg_heap's "high correctness" was a scorer
+    # artefact of picking the first-returned row when 28-114 live rows
+    # co-existed per slot; F14 stops printing that number.
+    out_lines.append(
+        "\n## Sensitivity of Precision to K (c=1)\n\n"
+        "Cells reading INTEGRITY FAIL had > 1 live row per (entity, "
+        "attribute) slot at end-of-trace — the numeric \"Precision\" "
+        "would only be a coin-flip on whichever duplicate the scanner "
+        "returned first. Preserved under `Precision_ignoring_integrity` "
+        "in the raw JSON.\n")
     out_lines.append("| system | " + " | ".join(f"K={K}" for K in Ks) +
                      " |")
     out_lines.append("|" + "---|" * (len(Ks) + 1))
@@ -101,7 +133,7 @@ def main() -> int:
             match = [r for r in rows
                      if r["system"] == s and r["c"] == 1 and r["K"] == K]
             if match:
-                cells.append(f"{match[0]['Precision']:.3f}")
+                cells.append(_prec_cell(match[0]))
             else:
                 cells.append("-")
         out_lines.append(f"| {s} | " + " | ".join(cells) + " |")

@@ -3,12 +3,25 @@
   "conf_mode": "on",
   "correctness": {
     "AA": 0.55,
+    "AA_ignoring_integrity": 0.55,
     "Precision": 0.55,
+    "Precision_ignoring_integrity": 0.55,
     "all_slot_accuracy": 0.55,
     "all_slots": 100,
     "all_slots_correct": 55,
     "contested_slots": 100,
     "correct_on_contested": 55,
+    "integrity": {
+      "construction_reason": "KNDB F6 advisory xact lock + F8 xmin tiebreak",
+      "integrity_status": "PASS",
+      "max_live_rows_per_slot": 1,
+      "mean_live_rows_per_slot": 1.0,
+      "measured_via": "by_construction",
+      "n_live_slots": 100,
+      "n_slots_with_gt_1_live": 0,
+      "sum_excess_live_rows": 0
+    },
+    "integrity_status": "PASS",
     "missing_live_rows": 0
   },
   "dataset": "bookauthor",

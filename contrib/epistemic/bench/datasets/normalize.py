@@ -587,6 +587,226 @@ def _bookauthor_source_stats(
     return out
 
 
+def normalize_bookauthor_f14(source_dir: str, out_path: str,
+                             top_k: int,
+                             n_adversarial_per_isbn: int,
+                             adversarial_strategy: str = "scrambled",
+                             adv_seed: int = 20260714,
+                             ) -> Dict[str, Any]:
+    """
+    F14 variant of the Book-Author normalizer.
+
+    Ground-truth policy (stated up front, does NOT adapt to outcomes):
+      A MEASURED value beats an INFERRED value regardless of the
+      INFERRED value's asserted confidence. This is the paper's
+      epistemic claim: confidence is a self-report, kind is an
+      epistemic act.
+
+    Threat model (stated up front):
+      A hostile / miscalibrated writer asserts HIGH confidence on an
+      INFERRED value. Real-world analogue: LLM-generated content that
+      hallucinates values but self-reports as certain; a malicious
+      agent poisoning a knowledge store by claiming high credibility
+      on a fabricated fact.
+
+    Mapping (revised from F13 to make kind vs. confidence DISAGREE):
+
+      Tier A (top-K/2 by n_listings AND canon_rate >= 0.5):
+          ep_kind = MEASURED
+          ep_confidence uniform in [0.5, 0.9]   (honest uncertainty)
+      Tier B (rest of top-K by n_listings):
+          ep_kind = INFERRED
+          ep_confidence uniform in [0.4, 0.7]
+      Tier C (everything else):
+          ep_kind = DERIVED
+          ep_confidence uniform in [0.2, 0.5]
+
+      Adversarial injections (N per gold ISBN):
+          value = an INCORRECT author string (see `adversarial_strategy`)
+          ep_kind = INFERRED
+          ep_specificity = 0
+          ep_confidence uniform in [0.95, 1.0]
+          sources = ['adversarial_agent_{i}']
+
+    Confidence draws use a deterministic seeded RNG (seed=`adv_seed`
+    XOR the trace-record's index) so the workload is bit-for-bit
+    reproducible.
+
+    Independence from ground truth: the tier assignment (kind + conf
+    RANGE) still depends only on (n_listings, canon_rate) — structural
+    properties of `book.txt`. Only the specific conf sample within the
+    range depends on the seeded RNG. Adversarial injections do NOT
+    read `book_golden.txt` to decide who to attack — every gold ISBN
+    gets N injections.
+
+    `adversarial_strategy`:
+      "scrambled" — the wrong value is a real author name lifted
+                    from a DIFFERENT gold ISBN in the dataset (a
+                    plausible-looking but wrong answer).
+      "fabricated" — the wrong value is a literal fabrication like
+                    "John Doe" / "Jane Smith".
+
+    Injection timing: adversarial rows are appended at RANDOM positions
+    of the trace using the same seed. That way "adversarial is last
+    committer" happens by chance ~N/(N+n_honest) of the time per ISBN.
+    """
+    import random as _random
+
+    assertions, gold = _bookauthor_load(source_dir)
+    src_stats = _bookauthor_source_stats(assertions)
+
+    sorted_by_n = sorted(src_stats.items(), key=lambda kv: -kv[1][0])
+    top_k_sources = {s for s, _ in sorted_by_n[:top_k]}
+    half_k = max(1, top_k // 2)
+
+    def tier_of(src: str) -> Tuple[str, Tuple[float, float]]:
+        stats = src_stats[src]
+        if src in top_k_sources:
+            rank = next(i for i, (s, _) in enumerate(sorted_by_n)
+                        if s == src)
+            if rank < half_k and stats[2] >= 0.5:
+                return ("MEASURED", (0.5, 0.9))
+            return ("INFERRED", (0.4, 0.7))
+        return ("DERIVED", (0.2, 0.5))
+
+    # Confidence RNG: derived from adv_seed per-record index for
+    # reproducibility.
+    def _conf_sample(low: float, high: float, idx: int) -> float:
+        rng = _random.Random(adv_seed ^ idx)
+        return low + (high - low) * rng.random()
+
+    stats_out: Dict[str, Any] = {
+        "n_sources_total": len(src_stats),
+        "n_sources_top_k": len(top_k_sources),
+        "top_k_parameter": top_k,
+        "n_gold_isbns": len(gold),
+        "n_assertions_all": len(assertions),
+        "n_adversarial_per_isbn": n_adversarial_per_isbn,
+        "adversarial_strategy": adversarial_strategy,
+        "adv_seed": adv_seed,
+        "tier_counts": {"MEASURED": 0, "INFERRED": 0, "DERIVED": 0,
+                        "ADVERSARIAL_INFERRED": 0},
+    }
+
+    # 1) Emit honest assertions with F14 tier-based conf ranges.
+    base_epoch = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp())
+    src_epoch = {s: base_epoch + i * 60
+                 for i, (s, _) in enumerate(sorted_by_n)}
+    honest_rows: List[Dict[str, Any]] = []
+    idx = 0
+    for src, isbn, title, authors in assertions:
+        if isbn not in gold:
+            continue
+        if not authors.strip() or authors.strip().lower() in (
+                "not available", "n/a", "none"):
+            continue
+        kind, (lo, hi) = tier_of(src)
+        conf = _conf_sample(lo, hi, idx)
+        stats_out["tier_counts"][kind] += 1
+        entity = stable_entity_id(f"bookauthor::{isbn}")
+        attr = safe_attribute("author")
+        gt = gold.get(isbn)
+        honest_rows.append({
+            "entity_id": entity,
+            "attribute": attr,
+            "value": authors,
+            "ep_kind": kind,
+            "ep_specificity": 0,
+            "ep_confidence": round(conf, 6),
+            "valid_time_lower_epoch": src_epoch[src],
+            "valid_time_upper_epoch": None,
+            "sources": (None if kind == "MEASURED"
+                        else [f"bookstore::{src}"]),
+            "ground_truth_survivor": gt,
+            "dataset_metadata": {
+                "isbn": isbn,
+                "title": title,
+                "source_name": src,
+                "source_n_listings": src_stats[src][0],
+                "source_canon_rate": src_stats[src][2],
+                "tier_top_k": top_k,
+                "assigned_tier": ("A" if kind == "MEASURED"
+                                  else ("B" if kind == "INFERRED"
+                                        else "C")),
+                "record_role": "honest",
+                "trace_index": idx,
+            },
+        })
+        idx += 1
+
+    # 2) Build a pool of "wrong" answers for `scrambled` strategy: a
+    # list of author-list strings from OTHER gold ISBNs.
+    gold_isbns = sorted(gold.keys())
+    gold_answers = [gold[i] for i in gold_isbns]
+
+    def wrong_value_for_isbn(isbn: str, i: int) -> str:
+        if adversarial_strategy == "fabricated":
+            names = ["John Doe", "Jane Smith", "Alex Roe",
+                     "Chris Poe", "Sam Foe"]
+            return names[i % len(names)]
+        # scrambled: pick a gold answer from a DIFFERENT ISBN.
+        # deterministic per (isbn, i) so the run is reproducible.
+        h = hashlib.blake2b(f"{isbn}_{i}".encode(), digest_size=4).digest()
+        pool_idx = int.from_bytes(h, "big") % len(gold_answers)
+        if gold_answers[pool_idx] == gold[isbn]:
+            pool_idx = (pool_idx + 1) % len(gold_answers)
+        return gold_answers[pool_idx]
+
+    # 3) Emit N adversarial writes per gold ISBN.
+    adv_rows: List[Dict[str, Any]] = []
+    adv_base_epoch = base_epoch + len(sorted_by_n) * 60 + 3600
+    for isbn in gold_isbns:
+        entity = stable_entity_id(f"bookauthor::{isbn}")
+        attr = safe_attribute("author")
+        gt = gold[isbn]
+        for i in range(n_adversarial_per_isbn):
+            conf = _conf_sample(0.95, 1.0, idx)
+            adv_rows.append({
+                "entity_id": entity,
+                "attribute": attr,
+                "value": wrong_value_for_isbn(isbn, i),
+                "ep_kind": "INFERRED",
+                "ep_specificity": 0,
+                "ep_confidence": round(conf, 6),
+                "valid_time_lower_epoch": adv_base_epoch + i * 60,
+                "valid_time_upper_epoch": None,
+                "sources": [f"adversarial_agent_{i}"],
+                "ground_truth_survivor": gt,
+                "dataset_metadata": {
+                    "isbn": isbn,
+                    "source_name": f"adversarial_agent_{i}",
+                    "record_role": "adversarial",
+                    "trace_index": idx,
+                    "strategy": adversarial_strategy,
+                    "tier_top_k": top_k,
+                    "assigned_tier": "ADV",
+                },
+            })
+            stats_out["tier_counts"]["ADVERSARIAL_INFERRED"] += 1
+            idx += 1
+
+    # 4) Interleave: place adversarial rows at random positions using
+    # the same seed. Adversarial rows can arrive before / after / in-
+    # the-middle-of honest arrivals per slot — that is the threat
+    # model. Only the position is random; the (kind, conf, value)
+    # payload is fully deterministic.
+    trace: List[Dict[str, Any]] = list(honest_rows)
+    pos_rng = _random.Random(adv_seed)
+    for rec in adv_rows:
+        insert_at = pos_rng.randrange(len(trace) + 1)
+        trace.insert(insert_at, rec)
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, "w") as fh:
+        for rec in trace:
+            emit(fh, rec)
+
+    stats_out["n_honest_writes"] = len(honest_rows)
+    stats_out["n_adversarial_writes"] = len(adv_rows)
+    stats_out["n_total_writes"] = len(trace)
+    return stats_out
+
+
 def normalize_bookauthor(source_dir: str, out_path: str,
                          top_k: int,
                          gold_only: bool = True,
@@ -695,7 +915,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset",
                     choices=["memoryagentbench", "longmemeval", "mquake",
-                             "bookauthor"],
+                             "bookauthor", "bookauthor_f14"],
                     required=True)
     ap.add_argument("--source", required=True,
                     help="path to source dir (mab / bookauthor) or "
@@ -705,6 +925,15 @@ def main() -> int:
     ap.add_argument("--top-k", type=int, default=50,
                     help="Dong bookauthor: top-K sources by n_listings "
                          "become authority tiers A/B (rest -> C).")
+    ap.add_argument("--n-adversarial", type=int, default=0,
+                    help="bookauthor_f14: N adversarial INFERRED "
+                         "conf=[0.95,1.0] writes per gold ISBN.")
+    ap.add_argument("--adv-strategy", choices=["scrambled", "fabricated"],
+                    default="scrambled",
+                    help="bookauthor_f14 adversarial value strategy.")
+    ap.add_argument("--adv-seed", type=int, default=20260714,
+                    help="bookauthor_f14 seed for confidence draws and "
+                         "adversarial insertion positions.")
     args = ap.parse_args()
 
     if args.dataset == "memoryagentbench":
@@ -715,6 +944,10 @@ def main() -> int:
         stats = normalize_mquake(args.source, args.out, {})
     elif args.dataset == "bookauthor":
         stats = normalize_bookauthor(args.source, args.out, args.top_k)
+    elif args.dataset == "bookauthor_f14":
+        stats = normalize_bookauthor_f14(
+            args.source, args.out, args.top_k,
+            args.n_adversarial, args.adv_strategy, args.adv_seed)
     else:
         print("unknown dataset", file=sys.stderr); return 2
 

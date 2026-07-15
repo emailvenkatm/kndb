@@ -8,6 +8,12 @@
     "all_slots_correct": 23488,
     "contested_slots": 14332,
     "correct_on_contested": 14332,
+    "integrity": {
+      "construction_reason": "single writer, trigger sees own live rows",
+      "measured_via": "by_construction",
+      "n_slots_with_gt_1_live": 0
+    },
+    "integrity_status": "PASS",
     "missing_live_rows": 0
   },
   "dataset": "memoryagentbench",

@@ -67,13 +67,26 @@ def _emit_row(w, key, group):
     contested = [g["correctness"]["contested_slots"] for g in group]
     missing = [g["correctness"]["missing_live_rows"] for g in group]
     multi = [g["correctness"]["multiple_live_rows"] for g in group]
+    # F14: promote any_fail to a cell-level status.
+    any_fail = any(g["correctness"].get("integrity_status") == "FAIL"
+                   or g["correctness"].get("multiple_live_rows", 0) > 0
+                   for g in group)
+    integ_status = "FAIL" if any_fail else "PASS"
+
+    # F14: when integrity has failed, the correctness_rate is a scorer
+    # artefact; render the failure explicitly and keep the number in a
+    # separate "_ignoring_integrity" column.
+    cr_median_str = ("INTEGRITY_FAIL" if integ_status == "FAIL"
+                     else f"{median(cr):.4f}")
 
     w.writerow([
         key[0], key[1], key[2], key[3],
         len(group),
         f"{median(tps):.2f}", f"{std(tps):.2f}",
         f"{median(ab):.4f}",
+        cr_median_str,
         f"{median(cr):.4f}",
+        integ_status,
         f"{median(gp):.2f}",
         f"{median(p50):.3f}", f"{median(p99):.3f}", f"{median(p999):.3f}",
         int(median(contested)),
@@ -92,6 +105,8 @@ def write_csv(out_path: str, rows: List[Dict[str, Any]]) -> int:
             "tps_median", "tps_std",
             "abort_rate_median",
             "correctness_median",
+            "correctness_median_ignoring_integrity",
+            "integrity_status",
             "goodput_median",
             "p50_ms_median", "p99_ms_median", "p99_9_ms_median",
             "contested_median",

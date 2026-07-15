@@ -50,6 +50,10 @@ def write_csv(cells: List[Dict[str, Any]], out_path: str) -> None:
         "n_cases", "n_cases_full_correct",
         "goodput_correct_writes_per_s",
         "elapsed_s",
+        # F14: integrity axis alongside correctness numbers.
+        "integrity_status",
+        "n_slots_with_gt_1_live",
+        "max_live_rows_per_slot",
     ]
     with open(out_path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fields)
@@ -88,6 +92,12 @@ def write_csv(cells: List[Dict[str, Any]], out_path: str) -> None:
                 "goodput_correct_writes_per_s":
                     round(c.get("goodput_correct_writes_per_s", 0.0), 2),
                 "elapsed_s": c.get("elapsed_s"),
+                "integrity_status": cor.get("integrity_status",
+                                            "NOT_MEASURED"),
+                "n_slots_with_gt_1_live": (cor.get("integrity") or {}).get(
+                    "n_slots_with_gt_1_live"),
+                "max_live_rows_per_slot": (cor.get("integrity") or {}).get(
+                    "max_live_rows_per_slot"),
             }
             w.writerow(row)
 
@@ -118,7 +128,7 @@ def write_md(cells: List[Dict[str, Any]], out_path: str) -> None:
             f"`bench/datasets/{ds}/README.md` for provenance and mapping.")
         lines.append("")
         header = ["system", "c", "n_writes", "tps", "abort_rate",
-                  "AA", "goodput", "elapsed_s"]
+                  "AA", "integrity", "goodput", "elapsed_s"]
         if ds == "longmemeval":
             header.append("CRS")
         if ds == "mquake":
@@ -129,20 +139,28 @@ def write_md(cells: List[Dict[str, Any]], out_path: str) -> None:
         for c in cells_ds:
             m = c.get("metrics", {})
             cor = c.get("correctness", {})
+            integ_status = cor.get("integrity_status", "NOT_MEASURED")
+            aa_cell = ("INTEGRITY FAIL" if integ_status == "FAIL"
+                       else f"{cor.get('AA', 0.0):.3f}")
             row = [
                 c["_cell_system"],
                 str(c["_cell_clients"]),
                 str(c.get("n_writes_attempted", "?")),
                 f"{m.get('throughput_writes_per_s', 0.0):.1f}",
                 f"{m.get('abort_rate', 0.0):.3f}",
-                f"{cor.get('AA', 0.0):.3f}",
+                aa_cell,
+                integ_status,
                 f"{c.get('goodput_correct_writes_per_s', 0.0):.1f}",
                 f"{c.get('elapsed_s', 0.0):.2f}",
             ]
             if ds == "longmemeval":
-                row.append(f"{cor.get('CRS_KU_Acc', 0.0):.3f}")
+                crs = cor.get('CRS_KU_Acc', 0.0)
+                row.append("INTEGRITY FAIL" if integ_status == "FAIL"
+                           else f"{crs:.3f}")
             if ds == "mquake":
-                row.append(f"{cor.get('UOCS', 0.0):.3f}")
+                uocs = cor.get('UOCS', 0.0)
+                row.append("INTEGRITY FAIL" if integ_status == "FAIL"
+                           else f"{uocs:.3f}")
                 row.append(f"{cor.get('n_cases_full_correct', 0)}/{cor.get('n_cases', 0)}")
             lines.append("| " + " | ".join(row) + " |")
         lines.append("")

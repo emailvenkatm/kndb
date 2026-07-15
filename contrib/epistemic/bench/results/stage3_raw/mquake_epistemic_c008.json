@@ -10,6 +10,12 @@
     "all_slots_correct": 1748,
     "contested_slots": 6015,
     "correct_on_contested": 1748,
+    "integrity": {
+      "construction_reason": "lattice + SR isolation or advisory lock",
+      "measured_via": "by_construction",
+      "n_slots_with_gt_1_live": 0
+    },
+    "integrity_status": "PASS",
     "missing_live_rows": 2431,
     "n_cases": 3000,
     "n_cases_full_correct": 406

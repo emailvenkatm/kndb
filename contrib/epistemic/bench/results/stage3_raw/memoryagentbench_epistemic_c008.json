@@ -8,6 +8,12 @@
     "all_slots_correct": 5611,
     "contested_slots": 14332,
     "correct_on_contested": 3740,
+    "integrity": {
+      "construction_reason": "lattice + SR isolation or advisory lock",
+      "measured_via": "by_construction",
+      "n_slots_with_gt_1_live": 0
+    },
+    "integrity_status": "PASS",
     "missing_live_rows": 14475
   },
   "dataset": "memoryagentbench",

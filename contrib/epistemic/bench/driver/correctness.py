@@ -680,10 +680,19 @@ def score_correctness(
             if ok:
                 n_uncontested_correct += 1
 
+    # Integrity status: a cell FAILS integrity if ANY slot ended with
+    # more than one live row. F14 exposes this alongside the numeric
+    # correctness so pg_heap's "spuriously high correctness" cannot hide
+    # its integrity failure. `correctness_rate_ignoring_integrity` is
+    # the F13-era `correctness_rate` retained under a clearer name.
+    integrity_status = "FAIL" if n_multiple_live > 0 else "PASS"
+    cr = (n_correct / n_contested) if n_contested else 1.0
     return {
         "contested_slots": n_contested,
         "correct_on_contested": n_correct,
-        "correctness_rate": (n_correct / n_contested) if n_contested else 1.0,
+        "correctness_rate": cr,
+        "correctness_rate_ignoring_integrity": cr,
+        "integrity_status": integrity_status,
         "missing_live_rows": n_missing_live,
         "multiple_live_rows": n_multiple_live,
         "uncontested_slots": n_uncontested_total,

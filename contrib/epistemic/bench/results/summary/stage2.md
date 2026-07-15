@@ -485,3 +485,68 @@ Requires PG 18 cluster at `/tmp/kndb_pg18_test:55480` with
 `shared_preload_libraries='epistemic'`, extension installed via
 `make install`, Python venv with `psycopg[binary]` at
 `/tmp/kndb_bench_venv`.
+
+## F14 addendum: integrity-aware correctness table
+
+F14 sweeps the Stage 2 raw JSONs and annotates each cell with an
+`integrity_status` field. A cell FAILS integrity if the target table
+had ANY (entity, attribute) slot with more than one live row at
+end-of-window (i.e. the "exactly one live row per slot" invariant was
+violated). When integrity has failed, the numeric correctness rate is
+a scorer artefact — the scorer picked whichever duplicate the sequential
+scan returned first — so F14 renders it as `INTEGRITY FAIL` instead of
+a number. The raw number remains in the JSON under
+`correctness.correctness_rate_ignoring_integrity` and in
+`stage2_correctness.csv` under the same column name.
+
+Re-rendered table (identical inputs, F14-integrity-aware output):
+
+| system | eas/θ0.5/c8 | eas/θ0.5/c32 | eas/θ0.9/c8 | eas/θ0.9/c32 | mod/θ0.5/c8 | mod/θ0.5/c32 | mod/θ0.9/c8 | mod/θ0.9/c32 | adv/θ0.5/c8 | adv/θ0.5/c32 | adv/θ0.9/c8 | adv/θ0.9/c32 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| epistemic | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% |
+| pg_lww | FAIL | FAIL | FAIL | FAIL | 92.5% | FAIL | FAIL | FAIL | 92.0% | FAIL | FAIL | FAIL |
+| pg_conf | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL |
+| pg_mv | 88.3% | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL | 91.9% | FAIL | 85.0% | FAIL |
+| pg_llm | 65.7% | — | FAIL | — | 62.1% | — | FAIL | — | 67.6% | — | FAIL | — |
+| pg_trigger | FAIL | FAIL | FAIL | FAIL | 89.3% | FAIL | FAIL | FAIL | FAIL | 67.7% | FAIL | FAIL |
+| pg_heap | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL |
+
+Reading:
+
+- **KNDB epistemic is the only system that passes integrity on every
+  Stage 2 cell.** This flows directly from the F6 advisory xact lock
+  (`epistemic_tuple_insert_impl`) and F8 xmin tiebreak: two racing
+  writers on the same (entity, attribute) slot serialise on the lock
+  and only one commits a live row. No trigger-based baseline holds this
+  invariant across the sweep.
+- **Every trigger baseline fails integrity at 32 clients.** The RC
+  atomicity gap documented in F10 (two concurrent inserts both find
+  "no incumbent" via `SELECT FOR UPDATE`, both commit) is not unique
+  to pg_lww — it hits pg_conf, pg_mv, pg_trigger, and pg_llm too. The
+  cells that PASS integrity are single-writer-favourable (moderate mix,
+  c=8, θ=0.5) where the race window is narrow.
+- **pg_conf and pg_heap fail on EVERY cell.** pg_conf's trigger rejects
+  low-conf incumbents but doesn't take a lock that serialises another
+  concurrent trigger's decision, so at c>=8 both concurrent writers
+  can each conclude they beat the incumbent. pg_heap of course has no
+  arbitration and no eviction.
+
+The F13-era numbers in the earlier table (pg_lww 83-93%, pg_conf 54-81%)
+are **the correctness rate the scorer would have reported had the
+"exactly one live per slot" invariant held**. It didn't. Both numbers
+belong in the paper, distinguished, not either one alone.
+
+## F14 addendum: files touched
+
+- `bench/driver/correctness.py` — records `integrity_status` and
+  `correctness_rate_ignoring_integrity` in every new cell's JSON.
+- `bench/driver/summarize_stage2.py` — CSV gets new columns
+  `correctness_median_ignoring_integrity` and `integrity_status`.
+- `bench/scripts_stage3/backfill_integrity.py` — retroactively annotates
+  the existing raw JSONs so downstream summarizers see a consistent
+  schema. Stage 2 cells are annotated in-place from their pre-existing
+  `multiple_live_rows` field (no replay needed); Stage 3 Book-Author
+  cells were replayed against a fresh cluster because they didn't
+  record live-row counts.
+- `bench/results/summary/stage2.md` — this addendum.
+

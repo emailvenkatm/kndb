@@ -9,6 +9,12 @@
     "all_slots_correct": 0,
     "contested_slots": 78,
     "correct_on_contested": 0,
+    "integrity": {
+      "construction_reason": "lattice + SR isolation or advisory lock",
+      "measured_via": "by_construction",
+      "n_slots_with_gt_1_live": 0
+    },
+    "integrity_status": "PASS",
     "missing_live_rows": 0
   },
   "dataset": "longmemeval",
