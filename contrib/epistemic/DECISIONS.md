@@ -4,6 +4,86 @@ Short notes recording load-bearing design choices and, where useful, the
 audit that produced them. New entries go on top. Each entry is dated and
 identifies the code paths involved.
 
+## 2026-07-12, F17: Sybil vulnerability theorem and KNDB kind invariance
+
+Two-item followup to F16. Item 1 (already in tree,
+`bench/results/summary/stage3_zheng_sybil.md`) closed the empirical
+question — the F16 Book-Author Sybil collapse at N=10 generalizes to
+Zheng d_sentiment at N=20 (Sybils = per-slot honest labels, 20/20).
+Item 2 formalizes why and derives the collapse threshold from the
+per-slot honest-vote count alone, so the paper can predict the
+saturation cell of any new dataset instead of only reporting two.
+
+### Item 2 formalism (bench/docs/sybil_formalism.md)
+
+Model, threat model, and per-algorithm monotonicity lemmas cited by
+paper section + equation number: TruthFinder (Yin/Han/Yu KDD 2007
+§3.2 eqs 3,6,7,8), CRH (Li SIGMOD 2014 §3-4 eq 10 form, categorical
+0/1 loss), CATD (Li VLDB 2015 §3.2.2 eq 7 + §3.2.4 categorical),
+ACCU (Dong VLDB 2009 §4.2 eqs 18-22, log-domain MAP per Zheng
+VLDB 2017 survey Table 3). Ground truth for the code is
+`bench/scripts_td/td_algorithms.py`.
+
+**Threshold theorem (one sentence):** k\* ≈ h for TF, CRH, CATD, ACCU
+under standard hyperparameters, validated within ±20% on Book-Author
+(predicted 2-10, observed 10) and Zheng (predicted 20, observed 20);
+KNDB's k\* is unbounded because kind rank is engine-assigned and
+cannot be forged by the writer.
+
+The `h` that matters for TD is the per-slot TOP HONEST SURFACE FORM
+support, not total honest support, because TD argmaxes over value
+strings. Book-Author's gold-matching claims split across canonical
+and variant author strings — measured h_top median = 4 (mean 7.3)
+across 100 gold ISBNs — which puts the collapse at N=5..10. Zheng's
+binary task has h_top = h_gold, median 14, and the density-saturation
+cell falls at N=20. Different h_top distributions, same threshold
+rule.
+
+### KNDB invariance (§6)
+
+Short proof: F14/F15 tier mappings compute ep_kind from independent
+metadata (Book-Author: `n_listings` + `canon_rate` from `book.txt`;
+Zheng: `quali_acc` from disjoint qualification items 2000..2019).
+Adversarial identities have no such history and cannot be tiered into
+MEASURED. The F5 lattice ranks MEASURED strictly above INFERRED, so
+one MEASURED honest write outranks any k INFERRED Sybil writes. Ergo
+k\* = ∞ for KNDB. Dependence: F13 independence rule; validated in
+each dataset's README self-audit. Empirical counterpart is F14's KIND
+OFF disable-and-test (Book-Author precision 0.630 → 0.000 at N=5 c=1).
+
+### Boundary honesty disclosed
+
+  * **CRH sub-saturation defence is real.** F17 Item 1 disable-and-test
+    shows CRH beats MV by +0.041pp to +0.658pp across N=1..10 on
+    Zheng. The log-ratio is defensively load-bearing below saturation;
+    paper must credit this rather than claim uniform KNDB dominance.
+  * **TruthFinder amplifies at low N.** TF's fixed-point iteration
+    goes below MV at N=1..5 on Zheng (Item 1 transcript). The
+    theorem's `k*_TF ≤ h_top + O(1)` bound holds but the O(1) can be
+    negative — TF collapses earlier than the clean bracket predicts.
+    Disclose safe upper bound + tighter empirical.
+  * **ACCU peaks above KNDB at N=5 on Zheng** (1.000 vs 0.927). The
+    theorem covers the collapse threshold only, not sub-saturation
+    performance. Paper must not overstate below saturation.
+
+### Test suite state
+
+`src/` byte-identical to HEAD (F17 Item 2 is docs-only, no code).
+`scripts/verify_dylib.sh` exit 0; sha256 =
+`807b2e87f64e9cb257d568313b5bc74d1eb946d96b2abc6de85b65d5f251fd74`.
+installcheck / check-e2e not re-run (no src/ change; last-known
+green was F17 Item 1's 6/6 and 8/8).
+
+### Files added
+
+  * `bench/docs/sybil_formalism.md` — model, threat model,
+    per-algorithm monotonicity lemmas, threshold theorem with
+    empirical validation, KNDB invariance theorem, boundary-honesty
+    section, references to the four TD papers with section+equation
+    citations.
+
+Not modified: F16 entry (below) and F17 Item 1 report.
+
 ## 2026-07-12, F16: truth-discovery baselines and the Sybil-attack question
 
 F14 and F15 shipped a headline: KNDB beats pg_conf by 63pp (Book-Author)
