@@ -13,7 +13,7 @@
 \begin{table}[t]
 \centering
 \caption{Abbreviated PG 18 \texttt{TableAmRoutine} audit (44 callbacks
-  total): the seven \textsc{overridden} rows and the three DDL-privileged
+  total): the seven overridden rows and the three DDL-privileged
   callbacks that require explicit disclosure. The full 44-row
   enumeration with per-callback \texttt{tableam.h} citations and ``why
   safe'' justifications is in
@@ -31,7 +31,7 @@
 \toprule
 callback & class & role \\
 \midrule
-\multicolumn{3}{l}{\emph{Seven OVERRIDDEN write-path callbacks}} \\
+\multicolumn{3}{l}{\emph{Seven overridden write-path callbacks}} \\
 \midrule
 \texttt{tuple\_insert}               & F1--F16 & R1--R5, F6 advisory lock, precedence + F8 xmin tiebreak, eviction audit. \\
 \texttt{multi\_insert}               & F18 & Per-slot fan-out to \texttt{epistemic\_tuple\_insert\_impl}; closes COPY CIM\_MULTI bypass. \\
