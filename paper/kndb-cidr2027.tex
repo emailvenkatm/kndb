@@ -57,47 +57,36 @@
 \keywords{epistemic typing, data provenance, write-time enforcement,
   precedence lattice, semiring provenance, bitemporal databases, PostgreSQL}
 
-% ---- Author block (PLACEHOLDER -- DO NOT SUBMIT). -----------------------
-% =========================================================================
-% AUTHOR BLOCK PLACEHOLDER -- REPLACE BEFORE SUBMISSION
-% Four author slots; names and affiliations pending team sign-off. CIDR is
-% SINGLE-BLIND, so real names, institutions, cities, countries, and email
-% addresses must all be filled in before the CMT upload. Do not submit
-% with these bracketed placeholders in place.
-% =========================================================================
-\author{[Author 1 Name]}
-\authornote{All four author slots are placeholders pending team sign-off.
-  Do not submit this manuscript until every bracketed field
-  ([Author N Name], [Institution], [City], [Country], [email]) is
-  replaced with a real value.}
+% ---- Author block. ------------------------------------------------------
+\author{Venkata Maguluri}
 \affiliation{%
-  \institution{[Institution]}
-  \city{[City]}
-  \country{[Country]}}
-\email{[email]}
+  \institution{Independent Researcher}
+  \city{Bentonville, Arkansas}
+  \country{USA}}
+\email{emailvenkatm@gmail.com}
 
-\author{[Author 2 Name]}
+\author{Swapna Kommuri}
 \affiliation{%
-  \institution{[Institution]}
-  \city{[City]}
-  \country{[Country]}}
-\email{[email]}
+  \institution{Independent Researcher}
+  \city{Bentonville, Arkansas}
+  \country{USA}}
+\email{swapnakinbox@gmail.com}
 
-\author{[Author 3 Name]}
+\author{Kritica Sinha}
 \affiliation{%
-  \institution{[Institution]}
-  \city{[City]}
-  \country{[Country]}}
-\email{[email]}
+  \institution{Independent Researcher}
+  \city{Herndon, Virginia}
+  \country{USA}}
+\email{kritica.sinha17@gmail.com}
 
-\author{[Author 4 Name]}
+\author{Ashish Sood}
 \affiliation{%
-  \institution{[Institution]}
-  \city{[City]}
-  \country{[Country]}}
-\email{[email]}
+  \institution{Independent Researcher}
+  \city{Bothell, Washington}
+  \country{USA}}
+\email{aashish.sood@outlook.com}
 
-\renewcommand{\shortauthors}{[Authors] et al.}
+\renewcommand{\shortauthors}{Maguluri et al.}
 
 % =========================================================================
 
@@ -114,7 +103,7 @@ Databases enforce data types but are blind to data origin. A verified measuremen
 \section{Introduction}
 Relational databases enforce data types: a column declared numeric will not accept a string. They enforce nothing about data origin. A postal-verified address from a billing system, an unverified update typed by a sales rep, and a value computed from other rows are all just values of the declared type. Whatever distinguished them, that one was measured, one guessed, one computed, exists only in application code, column-naming conventions, or tribal knowledge, none of which the engine defends.
 
-For decades this blindness was tolerable because most writers were humans or deterministic programs. That assumption no longer holds. Data-enrichment pipelines sync vendor-modeled attributes into CRM fields where verified values live; measured single-provider accuracy for such enrichment runs roughly 65--85\%, and an analysis of twelve billion Salesforce records found 45\% duplicate records overall but 80\% among records created via API integrations. Machine-written data is demonstrably dirtier than human-entered data, and nothing in the schema says which is which~\cite{revblack}. Reverse-ETL products push model scores and predicted attributes into operational stores as a standard workflow. Recent work from Microsoft Research found that across nineteen frontier models, LLM agents on long delegated tasks silently degrade the content they write, with roughly 25\% corruption over twenty interactions for the strongest models, and more degradation when the agents were given file-writing tools~\cite{corrupt}. Meanwhile the consequences of conflated origin are documented: master-data platforms configured ``most recent wins'' let an unverified CRM address displace a postal-verified one~\cite{mdm}; the CFPB requires creditors to state accurate, specific reasons for adverse decisions even when produced by complex models~\cite{cfpb2023}; Equifax was fined \$15M in part for flawed code producing inaccurate scores~\cite{equifax}; and training pipelines must keep model-generated data out of verified corpora to avoid model collapse~\cite{collapse}, today via entire external decontamination pipelines bolted onto stores that have no origin concept.
+For decades this blindness was tolerable because most writers were humans or deterministic programs. That assumption no longer holds. Data-enrichment pipelines sync vendor-modeled attributes into CRM fields where verified values live; an analysis of twelve billion Salesforce records found 45\% duplicate records overall but 80\% among records created via API integrations. Machine-written data is demonstrably dirtier than human-entered data, and nothing in the schema says which is which~\cite{revblack}. Reverse-ETL products push model scores and predicted attributes into operational stores as a standard workflow. Recent work from Microsoft Research found that across nineteen frontier models, LLM agents on long delegated tasks silently degrade the content they write, with roughly 25\% corruption over twenty interactions for the strongest models, and more degradation when the agents were given file-writing tools~\cite{corrupt}. Meanwhile the consequences of conflated origin are documented: master-data platforms configured ``most recent wins'' let an unverified CRM address displace a postal-verified one~\cite{mdm}; the CFPB requires creditors to state accurate, specific reasons for adverse decisions even when produced by complex models~\cite{cfpb2023}; Equifax was fined \$15M in part for flawed code producing inaccurate scores~\cite{equifax}; and training pipelines must keep model-generated data out of verified corpora to avoid model collapse~\cite{collapse}, today via entire external decontamination pipelines bolted onto stores that have no origin concept.
 
 Our position is simple. The epistemic kind of a fact, whether it was measured, inferred, or derived, is a property of the data, and it belongs at the database layer --- enforced by triggers and constraints inside the DBMS rather than in application code: enforced at write time, carried through queries, and consulted at use time. Application code can implement these checks. But the argument for moving them into the engine is the one that moved referential integrity there decades ago. A database has many writers, those writers change over time, and a guarantee that depends on every one of them behaving is not a guarantee at all. Our evaluation makes this concrete.
 
@@ -133,7 +122,7 @@ Three documented patterns, one root cause.
 
 \noindent\textbf{Recency displacing verification.} Master-data survivorship rules decide which source's value survives into the golden record. A practitioner who audits MDM deployments at financial institutions describes the most common configuration error: ``most recent timestamp wins,'' under which a CRM's newer, rep-typed address displaces the billing system's postal-verified address~\cite{mdm}. The platform did exactly what it was told; the failure is that verification status was never a field the resolution logic could consult. The same audits find survivorship tuned to technical criteria such as most recent, most complete, or highest confidence, because origin is not represented.
 
-\noindent\textbf{Decisions that cannot explain themselves.} US creditors must give specific, accurate reasons for adverse actions even when decisions are produced by complex models~\cite{cfpb2023}. A decision computed by joining a verified bureau attribute with a model-estimated one is, in a standard store, just a flat result; nothing records that one input was measured and the other inferred, or how certain either was. The documented stakes are not hypothetical: credit-reporting complaints reached 5.8 million in 2025 (88\% of all CFPB complaints), and Equifax's \$15M penalty cited flawed code producing inaccurate scores~\cite{equifax}.
+\noindent\textbf{Decisions that cannot explain themselves.} US creditors must give specific, accurate reasons for adverse actions even when decisions are produced by complex models~\cite{cfpb2023}. A decision computed by joining a verified bureau attribute with a model-estimated one is, in a standard store, just a flat result; nothing records that one input was measured and the other inferred, or how certain either was. The documented stakes are not hypothetical: credit-reporting complaints reached 5.8 million in 2025 (88\% of all CFPB complaints)~\cite{cfpb2025}, and Equifax's \$15M penalty cited flawed code producing inaccurate scores~\cite{equifax}.
 
 \noindent\textbf{Synthetic data leaking into training corpora.} Training on model-generated data degrades models~\cite{collapse}; contamination persists even in widely used open datasets, and detection tooling exists precisely because the problem is routine~\cite{codec}. Teams therefore run external decontamination pipelines (n-gram overlap checks, per-sample provenance chains) to reconstruct, outside the store, a distinction the store could have kept.
 
@@ -190,7 +179,7 @@ Three views make origin-scoped reading a default: \texttt{fact\_compliance} (MEA
 \texttt{as\_of\_valid(entity, attr, t)} answers ``what was true at $t$''; \texttt{as\_of\_believed(entity, attr, t, s)} answers ``what did we believe at $s$ about time $t$'' --- the shape of question that point-in-time regulatory reporting requires~\cite{bcbs} and, combined with the audit relation, the shape a lender needs to defend a past decision.
 
 \section{Evaluation}
-\noindent\textbf{Setup.} PostgreSQL 17.10 and ProvSQL 1.10.0, native ARM64 (Apple silicon), no emulation; seed 42; adversarial suite of 100 write payloads (70 trust-violating, 30 legal) executed 10 times; dataset for loaded runs is 11,637 Synthea~\cite{synthea} synthetic patients yielding 615,658 typed facts. Four systems: \texttt{kndb}; \texttt{pg\_naive} (plain schema); \texttt{py\_guards} (application-layer checks in Python, 41 LOC); \texttt{pg\_handrolled} (a steelman: hand-written triggers reproducing the typing and lattice rules, 124 LOC, no confidence propagation). KNDB's engine totals 508 LOC, of which 214 are guard logic.
+\noindent\textbf{Setup.} PostgreSQL 17.10 and ProvSQL 1.10.0, native ARM64 (Apple silicon), no emulation; seed 42; adversarial suite of 100 write payloads (70 trust-violating, 30 legal) executed 10 times; dataset for loaded runs is 11,637 Synthea~\cite{synthea} synthetic patients yielding 565,587 typed facts. Four systems: \texttt{kndb}; \texttt{pg\_naive} (plain schema); \texttt{py\_guards} (application-layer checks in Python, 41 LOC); \texttt{pg\_handrolled} (a steelman: hand-written triggers reproducing the typing and lattice rules, 124 LOC, no confidence propagation). KNDB's engine totals 508 LOC, of which 214 are guard logic.
 
 \noindent\textbf{Enforcement.} Table~\ref{tab:adv} shows the headline: the plain schema accepts every violation; carefully written application guards catch fewer than half; both engine-resident approaches catch all of them. We emphasize the steelman's 70/70 rather than hiding it. What separates KNDB is reuse, not enforcement power: KNDB defines the guarantee once at the database layer where it applies to every writer of the shared store, whereas the steelman's triggers are a per-application, per-table implementation. Similarly, the py\_guards 30/70 does not claim application-layer enforcement cannot work; it shows what such enforcement typically looks like when re-implemented per application at 41 LOC of scope.
 
@@ -278,6 +267,9 @@ M. Zawalski, M. Boubdir, K. Bałazy, B. Nushi, and P. Ribalta. 2025. CoDeC: dete
 
 \bibitem{cfpb2023}
 Consumer Financial Protection Bureau. 2023. Circular 2023-03: adverse action notification requirements. September 2023.
+
+\bibitem{cfpb2025}
+Consumer Financial Protection Bureau. 2026. Consumer Response Annual Report 2025. March 2026. \url{https://files.consumerfinance.gov/f/documents/cfpb_2025-cr-annual-report_2026-03.pdf}.
 
 \bibitem{equifax}
 Consumer Financial Protection Bureau. 2025. Order imposing \$15M civil penalty on Equifax. January 2025.
