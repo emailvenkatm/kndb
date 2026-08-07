@@ -1,0 +1,28 @@
+
+===============================================================
+ max_locks_per_transaction = 64
+===============================================================
+  SHOW: mlpt=64
+  NLOCKENTS = 6400
+           N  outcome  detail
+       14200      OK  14200 rows
+       14400      OK  14400 rows
+       14600      OK  14600 rows
+       14800      OK  14800 rows
+       14900      OK  14900 rows
+       14950    FAIL  SQLSTATE=53200|ERROR:  53200: out of shared memory
+       15000    FAIL  SQLSTATE=53200|ERROR:  53200: out of shared memory
+
+===============================================================
+ max_locks_per_transaction = 1024
+===============================================================
+  SHOW: mlpt=1024
+  NLOCKENTS = 102400
+           N  outcome  detail
+      210000      OK  210000 rows
+      220000    FAIL  SQLSTATE=53200|ERROR:  53200: out of shared memory
+      230000    FAIL  SQLSTATE=53200|ERROR:  53200: out of shared memory
+      235000    FAIL  SQLSTATE=53200|ERROR:  53200: out of shared memory
+      240000    FAIL  SQLSTATE=53200|ERROR:  53200: out of shared memory
+
+done

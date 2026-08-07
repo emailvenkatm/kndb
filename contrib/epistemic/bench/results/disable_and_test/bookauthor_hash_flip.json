@@ -1,0 +1,15 @@
+{
+  "test": "\u00a76.4 kind-precedence disable-and-test on Book-Author, hash-flip provenance",
+  "date_utc": "2026-08-06",
+  "patch_site": "contrib/epistemic/src/epistemic_rules.c:379-423 (function epistemic_precedence_cmp)",
+  "patch": "insert `inc_rank = new_rank = 1;` after the two epistemic_kind_rank() assignments; short-circuits kind branch so precedence falls through to specificity/confidence (equivalent to pg_conf on both workloads since specificity=0 across the board).",
+  "hash_flip": {
+    "honest_before": "959d5e67a16cb0ced254d6f189dccf3a29141199dc8f1f1dcbb39fadae51bc26",
+    "patched": "fb408aacdf72d36306da7bb28308368dbff839aba8e447ecc0d9eebd56d17daf",
+    "restored_after": "959d5e67a16cb0ced254d6f189dccf3a29141199dc8f1f1dcbb39fadae51bc26"
+  },
+  "restore_verification": "git checkout contrib/epistemic/src/epistemic_rules.c \u2192 git diff --stat empty; rebuild + install returned dylib to byte-identical honest hash; verify_dylib.sh exit=0.",
+  "paper_reference_hash_short": "f7\\ldots (paper-pvldb/main.tex:310)",
+  "reconciliation": "MISMATCH: paper cites truncated `f7\\ldots` for the Book-Author disabled dylib; current HEAD produces `fb408aac...` when the same patch is applied. The paper's `f7...` was likely recorded at an earlier tree state and never re-verified after intervening commits. The current tree's honest \u2192 patched \u2192 restored flip is fully recorded here.",
+  "precision_effect_reference": "The kind-ON \u2192 kind-OFF precision drop 0.630 \u2192 0.000 for Book-Author is separately recorded in bench/results/summary/stage3_adversarial.md:127-128. This artifact provides only the hash flip; the precision measurement was not re-executed (would require the /tmp/kndb_pg18_test:55480 shared cluster + full stage3 harness)."
+}

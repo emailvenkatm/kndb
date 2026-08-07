@@ -1,0 +1,19 @@
+ERROR:  column "kind_expected" of relation "source_registry" does not exist
+LINE 1: INSERT INTO epistemic.source_registry (source_id, kind_expec...
+                                                          ^
+R2 microbenchmark: N=5000 rows per replicate, REPS=5 replicates
+dylib_sha256_installed: 959d5e67a16cb0ced254d6f189dccf3a29141199dc8f1f1dcbb39fadae51bc26
+
+rep=1  MEASURED_ms=72.450  INFERRED_ms=0.661
+rep=2  MEASURED_ms=71.955  INFERRED_ms=0.685
+rep=3  MEASURED_ms=70.983  INFERRED_ms=0.682
+rep=4  MEASURED_ms=71.793  INFERRED_ms=0.735
+rep=5  MEASURED_ms=72.887  INFERRED_ms=0.680
+
+MEASURED  median per-INSERT wall-clock (ms) = 71.955
+INFERRED  median per-INSERT wall-clock (ms) = 0.682
+MEASURED per-row = 14.39 μs   (paper claim: ~19 μs)
+INFERRED per-row = 0.14 μs
+R2 overhead      = -14.25 μs   (-99.1% of baseline)   (paper claim: ~7 μs, ~35%)
+
+done

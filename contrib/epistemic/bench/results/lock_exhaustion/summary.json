@@ -1,0 +1,31 @@
+{
+  "measurement_type": "advisory-lock-exhaustion ceiling for epistemic-AM single-txn distinct-slot INSERT",
+  "sqlstate_at_ceiling": "53200",
+  "errmsg": "out of shared memory",
+  "logs": [
+    "contrib/epistemic/bench/results/lock_exhaustion/rerun_20260806_214001.log",
+    "contrib/epistemic/bench/results/lock_exhaustion/ceiling_20260806_214104.log",
+    "contrib/epistemic/bench/results/lock_exhaustion/pinpoint_20260806_214506.log"
+  ],
+  "results": {
+    "mlpt_64_default": {
+      "max_connections": 100,
+      "max_prepared_transactions": 0,
+      "NLOCKENTS": 6400,
+      "last_ok_N": 14900,
+      "first_fail_N": 14950,
+      "paper_default_ceiling_claim": "~15,000 (paper \u00a78)",
+      "paper_copy_ceiling_claim": "N=20,000 (paper \u00a76.12)",
+      "reconciliation": "Paper \u00a78 '~15,000' MATCH within measurement resolution (real: 14,900-14,950). Paper \u00a76.12 'N=20,000' MISMATCH: actual first-fail N=14,950, well below 20,000."
+    },
+    "mlpt_1024": {
+      "max_connections": 100,
+      "NLOCKENTS": 102400,
+      "last_ok_N": 210000,
+      "first_fail_N": 220000,
+      "paper_claim": "~250,000 rows at max_locks_per_transaction=1024",
+      "reconciliation": "MISMATCH: actual first-fail N=220,000; last OK=210,000. Paper's 250,000 is ~19% high."
+    }
+  },
+  "dylib_sha256_during_run": "959d5e67a16cb0ced254d6f189dccf3a29141199dc8f1f1dcbb39fadae51bc26"
+}

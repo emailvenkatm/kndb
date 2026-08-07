@@ -1,0 +1,42 @@
+{
+  "test": "\u00a76.4 kind-precedence disable-and-test \u2014 full end-to-end rerun with precision AND dylib hash on the current tree.",
+  "date_utc": "2026-08-06",
+  "cluster": "/tmp/kndb_pg18_test:55480, single-writer c=1, isolation=SR",
+  "cell": "N=5 adversarial writes per gold slot (INFERRED confidence in [0.95, 1.0]); K=50 (Book-Author) or K=45 (Zheng); scrambled adversary strategy.",
+  "patch_site": "contrib/epistemic/src/epistemic_rules.c:379-423 function epistemic_precedence_cmp \u2014 insert `inc_rank = new_rank = 1;` after both rank assignments.",
+  "hashes": {
+    "honest_before": "959d5e67a16cb0ced254d6f189dccf3a29141199dc8f1f1dcbb39fadae51bc26",
+    "patched": "fb408aacdf72d36306da7bb28308368dbff839aba8e447ecc0d9eebd56d17daf",
+    "restored_after": "959d5e67a16cb0ced254d6f189dccf3a29141199dc8f1f1dcbb39fadae51bc26"
+  },
+  "results": {
+    "bookauthor_K50_N5_c1": {
+      "honest_precision": 0.63,
+      "patched_precision": 0.0,
+      "restored_precision": 0.63,
+      "delta_kind_off": 0.63,
+      "paper_claim": "0.630 -> 0.000 (paper \u00a76.4)",
+      "reconciliation": "MATCH: 0.630 -> 0.000 reproduces exactly on current tree; restored build returns to 0.630"
+    },
+    "zheng_K45_N5_c1": {
+      "honest_precision": 0.927,
+      "patched_precision": 0.0,
+      "restored_precision": 0.927,
+      "delta_kind_off": 0.927,
+      "paper_claim": "0.927 -> 0.000 (paper \u00a76.4)",
+      "reconciliation": "MATCH: 0.927 -> 0.000 reproduces exactly on current tree; restored build returns to 0.927"
+    }
+  },
+  "paper_hash_mismatch": {
+    "note": "Paper cites `807b2e87...` as honest and `f7...` (Book-Author) / `3cc4f4b7...` (Zheng) as patched. These were recorded on an earlier tree. Current-tree hashes are 959d5e67 honest and fb408aac patched (same patched hash on both datasets \u2014 the patch only touches epistemic_precedence_cmp, so both datasets share the disabled dylib)."
+  },
+  "restore_verification": "git diff --stat empty after checkout; rebuild returned .dylib.sha256 to 959d5e67 byte-identical; final Book-Author + Zheng cells both reproduced honest precision.",
+  "raw_json_paths": [
+    "contrib/epistemic/bench/results/disable_and_test/full_rerun/bookauthor_honest_N05_c1.json",
+    "contrib/epistemic/bench/results/disable_and_test/full_rerun/bookauthor_patched_N05_c1.json",
+    "contrib/epistemic/bench/results/disable_and_test/full_rerun/bookauthor_restored_N05_c1.json",
+    "contrib/epistemic/bench/results/disable_and_test/full_rerun/zheng_honest_N05_c1.json",
+    "contrib/epistemic/bench/results/disable_and_test/full_rerun/zheng_patched_N05_c1.json",
+    "contrib/epistemic/bench/results/disable_and_test/full_rerun/zheng_restored_N05_c1.json"
+  ]
+}

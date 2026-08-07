@@ -1,0 +1,34 @@
+
+===============================================================
+ max_locks_per_transaction = 64
+===============================================================
+  SHOW: max_locks_per_transaction=64
+  SHOW: max_connections=100
+  NLOCKENTS = mlpt*(max_conn+max_prep) = 6400
+           N  outcome  msg
+       10000      OK  inserted 10000 rows
+       12000      OK  inserted 12000 rows
+       14000      OK  inserted 14000 rows
+       15000    FAIL  ERROR:  out of shared memory
+       16000    FAIL  ERROR:  out of shared memory
+       18000    FAIL  ERROR:  out of shared memory
+       20000    FAIL  ERROR:  out of shared memory
+       25000    FAIL  ERROR:  out of shared memory
+       30000    FAIL  ERROR:  out of shared memory
+
+===============================================================
+ max_locks_per_transaction = 1024
+===============================================================
+  SHOW: max_locks_per_transaction=1024
+  SHOW: max_connections=100
+  NLOCKENTS = mlpt*(max_conn+max_prep) = 102400
+           N  outcome  msg
+      100000      OK  inserted 100000 rows
+      150000      OK  inserted 150000 rows
+      200000      OK  inserted 200000 rows
+      240000    FAIL  ERROR:  out of shared memory
+      250000    FAIL  ERROR:  out of shared memory
+      260000    FAIL  ERROR:  out of shared memory
+      300000    FAIL  ERROR:  out of shared memory
+
+done

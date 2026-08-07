@@ -1,0 +1,25 @@
+{
+  "measurement": "R2 (source-resolution SPI) per-row overhead microbenchmark",
+  "method": "single-txn INSERT of 5000 rows, MEASURED (R2 skipped) vs INFERRED (R2 runs SPI per row) on the same epistemic AM. Median across 5 replicates after warmup.",
+  "N_rows_per_rep": 5000,
+  "replicates": 5,
+  "results": {
+    "MEASURED_per_row_us": 14.41,
+    "INFERRED_per_row_us": 21.48,
+    "R2_overhead_absolute_us": 7.08,
+    "R2_overhead_relative_pct": 49.1
+  },
+  "paper_claims": {
+    "MEASURED_baseline_us": "~19",
+    "R2_overhead_us": "~7",
+    "R2_overhead_pct": "~35",
+    "location": "paper-pvldb/main.tex:480"
+  },
+  "reconciliation": {
+    "R2_absolute_overhead": "MATCH: 7.08 \u03bcs vs paper ~7 \u03bcs (exact within measurement resolution)",
+    "MEASURED_baseline": "PARTIAL: measured 14.4 \u03bcs vs paper ~19 \u03bcs. Difference likely due to my microbench truncating between reps (no pre-existing overlap-scan cost); paper's baseline probably measured against a warmer table.",
+    "R2_relative_overhead": "PARTIAL: measured 49.1% vs paper ~35%. 7.08 \u03bcs / 19 \u03bcs = 37% which would match paper; the relative gap is driven by the smaller MEASURED baseline in my clean-truncate setup."
+  },
+  "dylib_sha256": "959d5e67a16cb0ced254d6f189dccf3a29141199dc8f1f1dcbb39fadae51bc26",
+  "log": "contrib/epistemic/bench/results/r2_microbench/rerun_20260806_220012.log"
+}

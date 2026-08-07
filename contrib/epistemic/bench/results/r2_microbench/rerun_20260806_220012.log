@@ -1,0 +1,16 @@
+R2 microbenchmark: N=5000 rows per replicate, REPS=5 replicates
+dylib_sha256_installed: 959d5e67a16cb0ced254d6f189dccf3a29141199dc8f1f1dcbb39fadae51bc26
+
+rep=1  MEASURED_ms=72.047  INFERRED_ms=103.526
+rep=2  MEASURED_ms=71.274  INFERRED_ms=111.129
+rep=3  MEASURED_ms=74.895  INFERRED_ms=110.215
+rep=4  MEASURED_ms=72.611  INFERRED_ms=106.896
+rep=5  MEASURED_ms=71.562  INFERRED_ms=107.423
+
+MEASURED  median per-INSERT wall-clock (ms) = 72.047
+INFERRED  median per-INSERT wall-clock (ms) = 107.423
+MEASURED per-row = 14.41 μs   (paper claim: ~19 μs)
+INFERRED per-row = 21.48 μs
+R2 overhead      = 7.08 μs   (49.1% of baseline)   (paper claim: ~7 μs, ~35%)
+
+done

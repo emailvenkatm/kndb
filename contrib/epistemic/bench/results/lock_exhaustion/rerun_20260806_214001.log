@@ -1,0 +1,158 @@
+[lock_exhaustion.sh] 
+[lock_exhaustion.sh] ===============================================================
+[lock_exhaustion.sh]  max_locks_per_transaction = 64
+[lock_exhaustion.sh] ===============================================================
+[lock_exhaustion.sh]   SHOW: max_locks_per_transaction=64
+[lock_exhaustion.sh]   SHOW: max_connections=100
+[lock_exhaustion.sh]   SHOW: max_prepared_transactions=0
+[lock_exhaustion.sh] 
+[lock_exhaustion.sh]   sweep on fact_ep (USING epistemic):
+[lock_exhaustion.sh]          N  outcome errmsg
+[lock_exhaustion.sh]         10       OK 10 rows
+[lock_exhaustion.sh]         32       OK 32 rows
+[lock_exhaustion.sh]         50       OK 50 rows
+[lock_exhaustion.sh]         60       OK 60 rows
+[lock_exhaustion.sh]         63       OK 63 rows
+[lock_exhaustion.sh]         64       OK 64 rows
+[lock_exhaustion.sh]         65       OK 65 rows
+[lock_exhaustion.sh]         70       OK 70 rows
+[lock_exhaustion.sh]        100       OK 100 rows
+[lock_exhaustion.sh]        200       OK 200 rows
+[lock_exhaustion.sh]        500       OK 500 rows
+[lock_exhaustion.sh]       1000       OK 1000 rows
+[lock_exhaustion.sh]       2000       OK 2000 rows
+[lock_exhaustion.sh]       5000       OK 5000 rows
+[lock_exhaustion.sh]      10000       OK 10000 rows
+[lock_exhaustion.sh] 
+[lock_exhaustion.sh]   sweep on fact_heap (plain heap, no advisory locks):
+[lock_exhaustion.sh]          N  outcome errmsg
+[lock_exhaustion.sh]         10       OK 10 rows
+[lock_exhaustion.sh]         32       OK 32 rows
+[lock_exhaustion.sh]         50       OK 50 rows
+[lock_exhaustion.sh]         60       OK 60 rows
+[lock_exhaustion.sh]         63       OK 63 rows
+[lock_exhaustion.sh]         64       OK 64 rows
+[lock_exhaustion.sh]         65       OK 65 rows
+[lock_exhaustion.sh]         70       OK 70 rows
+[lock_exhaustion.sh]        100       OK 100 rows
+[lock_exhaustion.sh]        200       OK 200 rows
+[lock_exhaustion.sh]        500       OK 500 rows
+[lock_exhaustion.sh]       1000       OK 1000 rows
+[lock_exhaustion.sh]       2000       OK 2000 rows
+[lock_exhaustion.sh]       5000       OK 5000 rows
+[lock_exhaustion.sh]      10000       OK 10000 rows
+[lock_exhaustion.sh] 
+[lock_exhaustion.sh]   advisory-lock growth curve at N=32,64,100,500 (mid-txn count on fact_ep):
+[lock_exhaustion.sh]   N=32     advisory locks held mid-txn = 32
+[lock_exhaustion.sh]   N=64     advisory locks held mid-txn = 64
+[lock_exhaustion.sh]   N=100    advisory locks held mid-txn = 100
+[lock_exhaustion.sh]   N=500    advisory locks held mid-txn = 500
+[lock_exhaustion.sh] 
+[lock_exhaustion.sh]   no failure on fact_ep across sweep at mlpt=64
+[lock_exhaustion.sh]   no failure on fact_heap across sweep at mlpt=64
+[lock_exhaustion.sh] 
+[lock_exhaustion.sh] ===============================================================
+[lock_exhaustion.sh]  max_locks_per_transaction = 1024
+[lock_exhaustion.sh] ===============================================================
+[lock_exhaustion.sh]   SHOW: max_locks_per_transaction=1024
+[lock_exhaustion.sh]   SHOW: max_connections=100
+[lock_exhaustion.sh]   SHOW: max_prepared_transactions=0
+[lock_exhaustion.sh] 
+[lock_exhaustion.sh]   sweep on fact_ep (USING epistemic):
+[lock_exhaustion.sh]          N  outcome errmsg
+[lock_exhaustion.sh]         10       OK 10 rows
+[lock_exhaustion.sh]         32       OK 32 rows
+[lock_exhaustion.sh]         50       OK 50 rows
+[lock_exhaustion.sh]         60       OK 60 rows
+[lock_exhaustion.sh]         63       OK 63 rows
+[lock_exhaustion.sh]         64       OK 64 rows
+[lock_exhaustion.sh]         65       OK 65 rows
+[lock_exhaustion.sh]         70       OK 70 rows
+[lock_exhaustion.sh]        100       OK 100 rows
+[lock_exhaustion.sh]        200       OK 200 rows
+[lock_exhaustion.sh]        500       OK 500 rows
+[lock_exhaustion.sh]       1000       OK 1000 rows
+[lock_exhaustion.sh]       2000       OK 2000 rows
+[lock_exhaustion.sh]       5000       OK 5000 rows
+[lock_exhaustion.sh]      10000       OK 10000 rows
+[lock_exhaustion.sh] 
+[lock_exhaustion.sh]   sweep on fact_heap (plain heap, no advisory locks):
+[lock_exhaustion.sh]          N  outcome errmsg
+[lock_exhaustion.sh]         10       OK 10 rows
+[lock_exhaustion.sh]         32       OK 32 rows
+[lock_exhaustion.sh]         50       OK 50 rows
+[lock_exhaustion.sh]         60       OK 60 rows
+[lock_exhaustion.sh]         63       OK 63 rows
+[lock_exhaustion.sh]         64       OK 64 rows
+[lock_exhaustion.sh]         65       OK 65 rows
+[lock_exhaustion.sh]         70       OK 70 rows
+[lock_exhaustion.sh]        100       OK 100 rows
+[lock_exhaustion.sh]        200       OK 200 rows
+[lock_exhaustion.sh]        500       OK 500 rows
+[lock_exhaustion.sh]       1000       OK 1000 rows
+[lock_exhaustion.sh]       2000       OK 2000 rows
+[lock_exhaustion.sh]       5000       OK 5000 rows
+[lock_exhaustion.sh]      10000       OK 10000 rows
+[lock_exhaustion.sh] 
+[lock_exhaustion.sh]   advisory-lock growth curve at N=32,64,100,500 (mid-txn count on fact_ep):
+[lock_exhaustion.sh]   N=32     advisory locks held mid-txn = 32
+[lock_exhaustion.sh]   N=64     advisory locks held mid-txn = 64
+[lock_exhaustion.sh]   N=100    advisory locks held mid-txn = 100
+[lock_exhaustion.sh]   N=500    advisory locks held mid-txn = 500
+[lock_exhaustion.sh] 
+[lock_exhaustion.sh]   no failure on fact_ep across sweep at mlpt=1024
+[lock_exhaustion.sh]   no failure on fact_heap across sweep at mlpt=1024
+[lock_exhaustion.sh] 
+[lock_exhaustion.sh] ===============================================================
+[lock_exhaustion.sh]  max_locks_per_transaction = 4096
+[lock_exhaustion.sh] ===============================================================
+[lock_exhaustion.sh]   SHOW: max_locks_per_transaction=4096
+[lock_exhaustion.sh]   SHOW: max_connections=100
+[lock_exhaustion.sh]   SHOW: max_prepared_transactions=0
+[lock_exhaustion.sh] 
+[lock_exhaustion.sh]   sweep on fact_ep (USING epistemic):
+[lock_exhaustion.sh]          N  outcome errmsg
+[lock_exhaustion.sh]         10       OK 10 rows
+[lock_exhaustion.sh]         32       OK 32 rows
+[lock_exhaustion.sh]         50       OK 50 rows
+[lock_exhaustion.sh]         60       OK 60 rows
+[lock_exhaustion.sh]         63       OK 63 rows
+[lock_exhaustion.sh]         64       OK 64 rows
+[lock_exhaustion.sh]         65       OK 65 rows
+[lock_exhaustion.sh]         70       OK 70 rows
+[lock_exhaustion.sh]        100       OK 100 rows
+[lock_exhaustion.sh]        200       OK 200 rows
+[lock_exhaustion.sh]        500       OK 500 rows
+[lock_exhaustion.sh]       1000       OK 1000 rows
+[lock_exhaustion.sh]       2000       OK 2000 rows
+[lock_exhaustion.sh]       5000       OK 5000 rows
+[lock_exhaustion.sh]      10000       OK 10000 rows
+[lock_exhaustion.sh] 
+[lock_exhaustion.sh]   sweep on fact_heap (plain heap, no advisory locks):
+[lock_exhaustion.sh]          N  outcome errmsg
+[lock_exhaustion.sh]         10       OK 10 rows
+[lock_exhaustion.sh]         32       OK 32 rows
+[lock_exhaustion.sh]         50       OK 50 rows
+[lock_exhaustion.sh]         60       OK 60 rows
+[lock_exhaustion.sh]         63       OK 63 rows
+[lock_exhaustion.sh]         64       OK 64 rows
+[lock_exhaustion.sh]         65       OK 65 rows
+[lock_exhaustion.sh]         70       OK 70 rows
+[lock_exhaustion.sh]        100       OK 100 rows
+[lock_exhaustion.sh]        200       OK 200 rows
+[lock_exhaustion.sh]        500       OK 500 rows
+[lock_exhaustion.sh]       1000       OK 1000 rows
+[lock_exhaustion.sh]       2000       OK 2000 rows
+[lock_exhaustion.sh]       5000       OK 5000 rows
+[lock_exhaustion.sh]      10000       OK 10000 rows
+[lock_exhaustion.sh] 
+[lock_exhaustion.sh]   advisory-lock growth curve at N=32,64,100,500 (mid-txn count on fact_ep):
+[lock_exhaustion.sh]   N=32     advisory locks held mid-txn = 32
+[lock_exhaustion.sh]   N=64     advisory locks held mid-txn = 64
+[lock_exhaustion.sh]   N=100    advisory locks held mid-txn = 100
+[lock_exhaustion.sh]   N=500    advisory locks held mid-txn = 500
+[lock_exhaustion.sh] 
+[lock_exhaustion.sh]   no failure on fact_ep across sweep at mlpt=4096
+[lock_exhaustion.sh]   no failure on fact_heap across sweep at mlpt=4096
+[lock_exhaustion.sh] 
+[lock_exhaustion.sh] done
