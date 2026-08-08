@@ -1,8 +1,9 @@
-% KNDB -- CIDR 2027 submission
-% Class: cidr-2027 (a rebadged acmart v1.78 that includes CIDR's
-% CC-BY 4.0 copyright notice; fetched from cidrdb.org/cidr2027/).
+% KNDB -- arXiv preprint version
+% Class: plain acmart sigconf with nonacm to suppress conference
+% headers/footers and copyright block. acmart ships with TeX Live and
+% is available on arXiv without bundling.
 % Docs on the acmart macros: https://ctan.org/pkg/acmart
-\documentclass[sigconf]{cidr-2027}
+\documentclass[sigconf,nonacm]{acmart}
 
 % acmart already pulls in amsmath, amssymb, microtype, hyperref, etc.
 % Do not reload them here; conflicts result.
@@ -20,14 +21,7 @@
 % ============  METADATA -- REQUIRES APPROVAL BEFORE FINAL PDF  ===========
 % =========================================================================
 
-% ---- Rights / conference (CC-BY 4.0, CIDR '27). --------------------------
-% cidr-2027.cls overloads mode 1 (`iw3c2w3`) to emit the CC-BY 4.0 notice
-% required by CIDR; do NOT change this to `cc` -- that macro is post-v1.78.
-\setcopyright{iw3c2w3}
-\copyrightyear{2027}
-\acmYear{2027}
-\acmConference[CIDR '27]{17th Conference on Innovative Data Systems
-  Research}{January 24--27, 2027}{Amsterdam, The Netherlands}
+% ---- Rights / conference: suppressed for arXiv preprint via `nonacm`. ---
 
 % ---- CCS concepts (Step 3 PROPOSAL). ------------------------------------
 \begin{CCSXML}
@@ -105,7 +99,7 @@ Relational databases enforce data types: a column declared numeric will not acce
 
 For decades this blindness was tolerable because most writers were humans or deterministic programs. That assumption no longer holds. Data-enrichment pipelines sync vendor-modeled attributes into CRM fields where verified values live; an analysis of twelve billion Salesforce records found 45\% duplicate records overall but 80\% among records created via API integrations. Machine-written data is demonstrably dirtier than human-entered data, and nothing in the schema says which is which~\cite{revblack}. Reverse-ETL products push model scores and predicted attributes into operational stores as a standard workflow. Recent work from Microsoft Research found that across nineteen frontier models, LLM agents on long delegated tasks silently degrade the content they write, with roughly 25\% corruption over twenty interactions for the strongest models, and more degradation when the agents were given file-writing tools~\cite{corrupt}. Meanwhile the consequences of conflated origin are documented: master-data platforms configured ``most recent wins'' let an unverified CRM address displace a postal-verified one~\cite{mdm}; the CFPB requires creditors to state accurate, specific reasons for adverse decisions even when produced by complex models~\cite{cfpb2023}; Equifax was fined \$15M in part for flawed code producing inaccurate scores~\cite{equifax}; and training pipelines must keep model-generated data out of verified corpora to avoid model collapse~\cite{collapse}, today via entire external decontamination pipelines bolted onto stores that have no origin concept.
 
-Our position is simple. The epistemic kind of a fact, whether it was measured, inferred, or derived, is a property of the data, and it belongs at the database layer --- enforced by triggers and constraints inside the DBMS rather than in application code: enforced at write time, carried through queries, and consulted at use time. Application code can implement these checks. But the argument for moving them into the engine is the one that moved referential integrity there decades ago. A database has many writers, those writers change over time, and a guarantee that depends on every one of them behaving is not a guarantee at all. Our evaluation makes this concrete.
+Our position is simple. The epistemic kind of a fact, whether it was measured, inferred, or derived, is a property of the data, and it belongs at the database layer --- enforced by triggers and constraints inside the DBMS rather than in application code. The kind is enforced at write time, carried through queries, and consulted at use time. Application code can implement these checks. But the argument for moving them into the engine is the one that moved referential integrity there decades ago. A database has many writers, those writers change over time, and a guarantee that depends on every one of them behaving is not a guarantee at all. Our evaluation makes this concrete.
 
 This paper makes four contributions:
 \begin{enumerate}
@@ -220,7 +214,7 @@ pg\_naive & 0 & --- & --- & --- \\
 KNDB governs origin, not value correctness: a correctly-labeled measured write carrying a wrong number passes; that is the province of CHECK constraints and validation, which are complementary. Preliminary concurrency testing indicates KNDB's enforcement guarantees hold under single-writer workloads or PostgreSQL SERIALIZABLE isolation; full characterization across isolation levels and contention regimes is in progress. The audit trail for rejected (as opposed to evicted) writes further requires an autonomous-transaction path we have scoped out. The specificity axis is exercised by tests but its calibration across real organizations is open. ProvSQL's propagation cost motivates either batched \texttt{set\_prob} maintenance or propagation-on-read designs. An epistemically-aware validation layer --- stricter plausibility checks for inferred values than measured ones --- is a natural extension we deliberately did not build. Finally, the deepest open question is standardization: if origin belongs in the engine, it ultimately belongs in SQL.
 
 \section{Conclusion}
-Databases learned long ago that guarantees which depend on every application behaving are not guarantees; that is why types, constraints, and referential integrity live in the engine. We have argued that a fact's epistemic kind now belongs on that list: enrichment pipelines, model outputs, and agents write guesses beside measurements at scale, and the cost of conflating them is documented in survivorship failures, unexplainable decisions, and contaminated training corpora. KNDB shows the primitive set is small, buildable on stock PostgreSQL in 500 lines, exact where it claims exactness, and honest about what it costs. The mechanisms are ordinary. The position we ask the community to debate is that the engine should know how a value came to exist.
+Databases learned long ago that guarantees which depend on every application behaving are not guarantees; that is why types, constraints, and referential integrity live in the engine. We have argued that a fact's epistemic kind now belongs on that list. Model-generated writes now reach shared stores at scale through enrichment pipelines and agent workflows. The costs of conflating them with verified measurements are documented: master-data failures where CRM updates displace postal-verified addresses, and adverse-action decisions creditors cannot justify because the store never recorded which input was measured. Training corpora face a related problem, now handled by external decontamination pipelines because the store itself has no origin concept. KNDB shows the primitive set is small, buildable on stock PostgreSQL in 500 lines, exact where it claims exactness, and honest about what it costs. The mechanisms are ordinary. The position we ask the community to debate is that the engine should know how a value came to exist.
 
 \begin{acks}
 Portions of this manuscript were prepared with the assistance of AI tools for language editing and formatting. All research content, ideas, experimental design, code, and citations are the authors' work, and the authors take full responsibility for the final content in accordance with the ACM Policy on Authorship.
