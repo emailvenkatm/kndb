@@ -30,5 +30,7 @@
     "throughput_writes_per_s": 85386.0,
     "abort_rate": 0.0
   },
-  "kind": "td_offline"
+  "kind": "td_offline",
+  "adv_strategy": "sybil",
+  "notes": "Book-Author Sybil injection: N adversarial identities per gold ISBN, each asserting the same falsified author value against the honest cluster. Tests when the number of Sybils exceeds h_top (per-slot top gold-matching honest surface-form support). Trace normalized_f16_K50_sybil_N<NN>.jsonl, generated with --adv-strategy sybil (F16)."
 }

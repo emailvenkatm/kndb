@@ -59,7 +59,7 @@
   "mv_mode": "on",
   "n_writes_attempted": 3361,
   "n_writes_in_full_trace": 3361,
-  "notes": "Real dataset replay. Every write is MEASURED (spec=0, conf=1.0) per each dataset's mapping README; the datasets' ground truth is later-wins-per-slot, while KNDB's F8 tiebreak is first-committer-wins. That mismatch is the finding, not a bug \u2014 see stage3_correctness.csv.",
+  "notes": "Book-Author Sybil injection: N adversarial identities per gold ISBN, each asserting the same falsified author value against the honest cluster. Tests when the number of Sybils exceeds h_top (per-slot top gold-matching honest surface-form support). Trace normalized_f16_K50_sybil_N<NN>.jsonl, generated with --adv-strategy sybil (F16).",
   "pg": {
     "isolation": "SR",
     "max_connections": 100,
@@ -71,5 +71,6 @@
   },
   "seed": 20260712,
   "system": "pg_conf",
-  "was_subsampled": false
+  "was_subsampled": false,
+  "adv_strategy": "sybil"
 }
