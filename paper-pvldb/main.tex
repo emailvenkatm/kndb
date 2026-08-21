@@ -14,6 +14,8 @@
 \usepackage{booktabs}
 \usepackage{listings}
 \usepackage{microtype}
+\usepackage{tikz}
+\usetikzlibrary{positioning, fit, backgrounds, arrows.meta, calc}
 % Long inline \texttt{} identifiers otherwise trip overfull \hbox warnings;
 % these settings let TeX break inside typewriter tokens and stretch spacing.
 \sloppy
@@ -109,21 +111,15 @@ The confidence-forgery adversary asserts INFERRED writes with self-reported conf
 The Sybil adversary controls $k$ synthetic identities per gold slot, each asserting the same falsified value. The adversary knows gold and picks the falsified value to maximise confusion (in binary tasks this is uniquely determined). The adversary cannot forge existing honest identities (Zheng worker IDs, Book-Author bookstore names) and cannot forge a MEASURED kind assignment. Kind assignment is engine-controlled and requires metadata that adversarial identities have no history of producing: on Book-Author, tier rank uses \texttt{n\_listings} (source volume in \texttt{book.txt}) and \texttt{canon\_rate} (fraction of author fields in "Last, First" format); on Zheng, tier rank uses \texttt{quali\_acc}, computed from a disjoint qualification test with question IDs 2000\ldots 2019 that every worker took. Both signals live in the dataset before the conflict resolution runs, and both are unavailable to an adversary that appeared for the first time in the write stream. The independence self-audits are in the datasets' READMEs.
 
 \subsection{Write-path bypass}
-The engine-in-storage claim rides on the TAM callback being reachable from every user-space write path that a hostile writer with \texttt{INSERT} plus \texttt{ALTER TABLE} on the target relation can construct. Enumerated write paths, each verified against PostgreSQL 18 REL\_18\_STABLE source:
-\begin{itemize}
-\item \texttt{ALTER TABLE \dots DISABLE TRIGGER ALL} sets \texttt{pg\_trigger.tgenabled = 'D'} (\texttt{tablecmds.c:5588-5592}); \texttt{TriggerEnabled} at \texttt{trigger.c:3491-3499} returns false. A trigger-based enforcer is bypassable here; a TAM callback is not. Note that \texttt{TriggerEnabled} at \texttt{trigger.c:3489-3499} still skips triggers marked \texttt{TRIGGER\_DISABLED} even when \texttt{session\_replication\_role = 'replica'}, so \texttt{DISABLE TRIGGER ALL} defeats \texttt{ENABLE ALWAYS TRIGGER} as well; the AM callback fires regardless of any \texttt{pg\_trigger.tgenabled} value.
-\item \texttt{SET session\_replication\_role = 'replica'}. \texttt{TriggerEnabled} at \texttt{trigger.c:3489-3499} skips \texttt{TRIGGER\_FIRES\_ON\_ORIGIN} (the default for user \texttt{CREATE TRIGGER}) under \texttt{SESSION\_REPLICATION\_ROLE\_REPLICA}. Triggers created \texttt{ENABLE ALWAYS} (\texttt{tablecmds.c:5566}, \texttt{TRIGGER\_FIRES\_ALWAYS}) are not in the disable-set at either branch of \texttt{TriggerEnabled} and DO fire under \texttt{replica}; that closes this specific bypass for a trigger-based enforcer that opts in to \texttt{ENABLE ALWAYS}. The GUC is \texttt{PGC\_SUSET} (\texttt{guc\_tables.c:5166}). The trigger-based enforcer therefore requires \texttt{ENABLE ALWAYS} to survive the \texttt{replica} bypass and still cannot survive \texttt{DISABLE TRIGGER ALL}; the AM callback survives both.
-\item \texttt{COPY FROM} single-row path. \texttt{CopyFrom} at \texttt{copyfrom.c:995-1006} forces \texttt{CIM\_SINGLE} when the target has a BEFORE trigger, an FDW that does not batch, or partitioned tables with statement-level triggers. The single-row path at \texttt{copyfrom.c:1427} calls \texttt{table\_tuple\_insert}, which routes through the TAM.
-\item \texttt{COPY FROM} batch path (\texttt{CIM\_MULTI}). The default path with no BEFORE trigger. Batched rows flow through \texttt{table\_multi\_insert} at \texttt{copyfrom.c:554-559}, dispatching on the AM's \texttt{multi\_insert}. Before we overrode it (Section~\ref{sec:implementation}), this inherited \texttt{heap\_multi\_insert} and silently skipped every epistemic rule check.
-\item \texttt{INSERT}, \texttt{INSERT \dots SELECT}, \texttt{INSERT \dots VALUES}. Standard \texttt{ModifyTable} path lands in \texttt{ExecInsert}, which calls \texttt{table\_tuple\_insert}.
-\item \texttt{UPDATE} that rewrites the epistemic prefix (F20). \texttt{ModifyTable} on the \texttt{CMD\_UPDATE} branch reaches \texttt{table\_tuple\_update}, which dispatches on the AM's \texttt{tuple\_update} callback (\texttt{tableam.h:718-727}). Before F20 we inherited \texttt{heapam\_tuple\_update} (\texttt{heapam\_handler.c:392-400}, delegating to \texttt{heap\_update} at \texttt{heapam.c:3241}) and an \texttt{UPDATE fact SET ep\_kind='MEASURED', ep\_confidence=1.0} against an incumbent \texttt{INFERRED/0.4} row committed cleanly, forging the epistemic prefix on a live row without R1--R5 firing, without the advisory lock, and without the precedence lattice or eviction audit. The F20 override refuses any \texttt{UPDATE} whose new prefix differs from the incumbent's; content-only updates (value, valid\_time, sources) are permitted.
-\item \texttt{DELETE} that removes an incumbent (F20). \texttt{ModifyTable} on \texttt{CMD\_DELETE} reaches \texttt{table\_tuple\_delete}, which dispatches on the AM's \texttt{tuple\_delete} callback (\texttt{tableam.h:709-716}). Before F20 we inherited \texttt{heapam\_tuple\_delete} (\texttt{heapam\_handler.c:382-388}, delegating to \texttt{heap\_delete} at \texttt{heapam.c:2772}). An adversary could \texttt{DELETE} a \texttt{MEASURED} incumbent and then \texttt{INSERT} an \texttt{INFERRED} forgery unopposed, since the precedence lattice has nothing left to compare against; no eviction audit row would ever be written for the \texttt{MEASURED} loss. The F20 override refuses \texttt{DELETE} outright with \texttt{ERRCODE\_FEATURE\_NOT\_SUPPORTED}.
-\item \texttt{INSERT \dots ON CONFLICT} (speculative-insertion protocol, F21). \texttt{ExecInsert} at \texttt{nodeModifyTable.c:1189-1216} REL\_18\_STABLE handles \texttt{ON CONFLICT} by acquiring a \texttt{SpeculativeInsertionLockAcquire}, calling \texttt{table\_tuple\_insert\_speculative} (\texttt{tableam.h:513-519}) to write the tuple with a speculative token, probing arbiter indexes via \texttt{ExecInsertIndexTuples}, then calling \texttt{table\_tuple\_complete\_speculative} (\texttt{tableam.h:521-525}) to either confirm (\texttt{heap\_finish\_speculative}) or kill (\texttt{heap\_abort\_speculative}) the tuple. Before F21 the AM inherited \texttt{heapam\_tuple\_insert\_speculative} and \texttt{heapam\_tuple\_complete\_speculative} verbatim (\texttt{heapam\_handler.c:2639-2640}); an \texttt{INSERT \dots ON CONFLICT DO UPDATE} or \texttt{DO NOTHING} that reached the speculative path would bypass R1--R5, the advisory lock, precedence, and the eviction audit. \emph{The SQL surface for this attack is currently unreachable on epistemic tables} because \texttt{CREATE UNIQUE INDEX}, \texttt{ADD PRIMARY KEY}, \texttt{ADD UNIQUE}, and \texttt{ADD EXCLUDE} all fail at \texttt{heap\_getnext}'s \texttt{rd\_tableam} identity check (\texttt{heapam.c:1352}) during the arbiter index's build scan, so \texttt{ON CONFLICT (col)} has no arbiter to bind (see \texttt{scripts/speculative\_forgery.sh} for the empirical SQL-level probe). The F21 overrides are defensive: the engine-in-storage claim must not depend on that accidental index-support gap persisting. The load-bearing proof lives in a C-level probe (\texttt{epistemic.\_probe\_speculative\_insert}) and its \texttt{sql/am\_speculative.sql} regression cell, exercised by the source-rebuild disable-and-test in Section~\ref{sec:eval-f21}.
-\item Logical replication apply worker. Runs as \texttt{SESSION\_REPLICATION\_ROLE\_REPLICA} by default; still reaches the TAM via \texttt{ExecSimpleRelationInsert} $\to$ \texttt{ExecInsert} $\to$ \texttt{table\_tuple\_insert}. Enforcement fires.
-\item \texttt{ALTER TABLE \dots SET ACCESS METHOD heap}. Out of scope. This is a schema-change threat available to the table owner only; it rewrites the relation onto plain heap and removes the TAM from the write path entirely. See Section~\ref{sec:limitations}.
-\end{itemize}
+The engine-in-storage claim rides on the TAM callback being reachable from every user-space write path that a hostile writer with \texttt{INSERT} plus \texttt{ALTER TABLE} on the target relation can construct. Figure~\ref{fig:writepath} enumerates the nine user-space write paths (all blocked by TAM callbacks) and the three DDL-privileged paths (out of scope); each callback and callback body in the figure carries the PG 18 REL\_18\_STABLE source pointer that authenticates the routing claim.
 
-The engine-in-storage differentiator holds against a writer with \texttt{INSERT}, \texttt{UPDATE}, \texttt{DELETE}, plus \texttt{ALTER TABLE} on the target relation, or a role that can toggle \texttt{session\_replication\_role} (a replication or CDC operator, a migration tool, a connection pool). It does not hold against the table owner.
+Two write paths deserve inline elaboration because their pre-override forgery is the concrete adversarial demonstration of what the callback layer prevents. The \texttt{UPDATE} path (\texttt{tableam.h:718-727}, F20): before F20 we inherited \texttt{heapam\_tuple\_update} (delegating to \texttt{heap\_update} at \texttt{heapam.c:3241}), so an \texttt{UPDATE fact SET ep\_kind='MEASURED', ep\_confidence=1.0} against an \texttt{INFERRED/0.4} incumbent committed cleanly, forging the epistemic prefix on a live row without R1--R5 firing, without the F6 advisory lock, and without the precedence lattice or eviction audit. The F20 override refuses any \texttt{UPDATE} whose new prefix differs from the incumbent's; content-only updates (value, valid\_time, sources) are permitted. The \texttt{DELETE} path (\texttt{tableam.h:709-716}, F20) had the mirror flaw: an adversary could \texttt{DELETE} a \texttt{MEASURED} incumbent and then \texttt{INSERT} an \texttt{INFERRED} forgery unopposed. The F20 override refuses \texttt{DELETE} outright with \texttt{ERRCODE\_FEATURE\_NOT\_SUPPORTED}.
+
+Trigger-based enforcers are strictly weaker than the AM callback on this workload: \texttt{ALTER TABLE \dots DISABLE TRIGGER ALL} sets \texttt{pg\_trigger.tgenabled = 'D'} (\texttt{tablecmds.c:5588-5592}) and \texttt{TriggerEnabled} at \texttt{trigger.c:3491-3499} returns false, defeating even \texttt{ENABLE ALWAYS TRIGGER}; a role with \texttt{SET session\_replication\_role = 'replica'} (a \texttt{PGC\_SUSET} GUC at \texttt{guc\_tables.c:5166}) further skips \texttt{TRIGGER\_FIRES\_ON\_ORIGIN} triggers under \texttt{SESSION\_REPLICATION\_ROLE\_REPLICA}. The AM callback fires regardless of any \texttt{pg\_trigger.tgenabled} value or replication role.
+
+The \texttt{INSERT \dots ON CONFLICT} path (F21) is a defensive override: the SQL surface for the speculative-insertion attack is currently unreachable on epistemic tables because \texttt{CREATE UNIQUE INDEX}, \texttt{ADD PRIMARY KEY}, \texttt{ADD UNIQUE}, and \texttt{ADD EXCLUDE} all fail at \texttt{heap\_getnext}'s \texttt{rd\_tableam} identity check (\texttt{heapam.c:1352}) during the arbiter index's build scan, so \texttt{ON CONFLICT (col)} has no arbiter to bind (empirical probe: \texttt{scripts/speculative\_forgery.sh}). The engine-in-storage claim must not depend on that accidental index-support gap persisting, so the F21 overrides land the enforcement path regardless; load-bearing proof lives in the C-level probe \texttt{epistemic.\_probe\_speculative\_insert} exercised by the source-rebuild disable-and-test in Section~\ref{sec:eval-f21}.
+
+The engine-in-storage differentiator therefore holds against a writer with \texttt{INSERT}, \texttt{UPDATE}, \texttt{DELETE}, plus \texttt{ALTER TABLE} on the target relation, or a role that can toggle \texttt{session\_replication\_role} (a replication or CDC operator, a migration tool, a connection pool). It does not hold against the table owner.
 
 %%% ---------------------------------------------------------------
 \section{Design}
@@ -169,6 +165,75 @@ On eviction the TAM writes one audit row into \texttt{epistemic.evicted\_fact} v
 %%% ---------------------------------------------------------------
 
 KNDB is a \texttt{shared\_preload\_libraries} extension of 2238 lines of C in \texttt{src/} plus 310 lines of headers in \texttt{include/} (2548 total per \texttt{wc -l src/*.c include/*.h}, of which 183 are the F21 C-level test probe \texttt{src/epistemic\_probe.c}, leaving 2365 in the production surface). It targets PostgreSQL 18 REL\_18\_STABLE via PGXS. Building the extension against a stock 18.4 install requires no PostgreSQL patch.
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  node distance=0.35cm and 0.20cm,
+  entry/.style={draw, rounded corners=2pt, minimum height=6mm, align=center, inner sep=2pt, fill=blue!5, font=\scriptsize\ttfamily},
+  cb/.style={draw, minimum height=6mm, align=center, inner sep=2pt, fill=green!8, font=\scriptsize\ttfamily},
+  bypass/.style={draw, dashed, rounded corners=2pt, minimum height=5mm, align=center, inner sep=2pt, fill=red!5, font=\scriptsize\ttfamily},
+  heap/.style={draw, thick, minimum height=6mm, minimum width=22mm, align=center, inner sep=2pt, fill=gray!12, font=\footnotesize\ttfamily},
+  envelope/.style={draw, thick, dashed, rounded corners=4pt, inner sep=4pt},
+  ar/.style={-{Latex[length=1.5mm]}, thin},
+  arb/.style={-{Latex[length=1.5mm]}, thin, dashed, red!70!black}
+]
+% Row 1: SQL entry points (6 boxes)
+\node[entry] (insert)   {INSERT /\\INSERT SELECT};
+\node[entry, right=of insert]     (copy)   {COPY FROM\\(single\,$|$\,batch)};
+\node[entry, right=of copy]       (update) {UPDATE};
+\node[entry, right=of update]     (delete) {DELETE};
+\node[entry, right=of delete]     (onc)    {INSERT $\ldots$\\ON CONFLICT};
+\node[entry, right=of onc]        (lr)     {Logical\\repl.\ apply};
+
+% Row 2: TAM callback boxes (7 overrides), aligned below entry row
+\node[cb, below=1.3cm of insert] (ti)  {tuple\_insert};
+\node[cb, right=0.15cm of ti]    (mi)  {multi\_insert\\(F18)};
+\node[cb, right=0.15cm of mi]    (tu)  {tuple\_update\\(F20)};
+\node[cb, right=0.15cm of tu]    (td)  {tuple\_delete\\(F20)};
+\node[cb, right=0.15cm of td]    (tis) {tuple\_insert\_\\speculative (F21)};
+\node[cb, right=0.15cm of tis]   (tcs) {tuple\_complete\_\\speculative (F21)};
+\node[cb, right=0.15cm of tcs]   (rta) {relation\_\\toast\_am};
+
+% Enforcement annotation (attached below the row)
+\node[below=0.15cm of ti.south west, font=\scriptsize\itshape, anchor=north west, align=left] (enfnote) {enforcement steps run inside each callback:\\R1--R5 rules \,$\to$\, F6 advisory xact lock \,$\to$\, find\_live\_overlap \,$\to$\, precedence \,+\, F8 xmin tiebreak \,$\to$\, heap\_insert of winner \,$\to$\, eviction audit + sys\_time close + rmgr-128 marker};
+
+% Envelope around callbacks + enforcement note
+\begin{scope}[on background layer]
+\node[envelope, fit=(ti)(rta)(enfnote), label={[font=\footnotesize\bfseries]above right:TAM callbacks (inside \texttt{heapam})}] (env) {};
+\end{scope}
+
+% Row 3: heapam
+\node[heap, below=0.55cm of env.south] (heap) {heapam};
+
+% Arrows: SQL entries down into TAM callbacks
+\draw[ar] (insert.south) -- (ti.north);
+\draw[ar] (copy.south)   -- (mi.north);
+\draw[ar] (update.south) -- (tu.north);
+\draw[ar] (delete.south) -- (td.north);
+\draw[ar] (onc.south)    -- (tis.north);
+\draw[ar] (onc.south)    to[out=-45,in=90] (tcs.north);
+\draw[ar] (lr.south)     to[out=-135, in=90, looseness=0.6] (ti.north east);
+
+% Envelope -> heapam (delegation)
+\draw[ar, thick] (env.south) -- (heap.north) node[midway, right, font=\scriptsize] {delegate};
+
+% DDL bypasses (right column, outside envelope)
+\node[bypass, right=1.2cm of rta.east, yshift=-0.05cm] (setam)   {ALTER TABLE \ldots\\SET ACCESS METHOD heap};
+\node[bypass, below=0.10cm of setam] (trunc)   {TRUNCATE};
+\node[bypass, below=0.10cm of trunc] (cluster) {CLUSTER /\\VACUUM FULL};
+\node[above=0.02cm of setam, font=\scriptsize\itshape, align=center] {DDL bypasses\\(out of scope, \S8)};
+
+% Bypass arrows: skip the envelope, go straight to heap
+\draw[arb] (setam.west)   to[out=180, in=0, looseness=0.4]   (heap.east);
+\draw[arb] (trunc.west)   to[out=180, in=15, looseness=0.5]  (heap.east);
+\draw[arb] (cluster.west) to[out=180, in=-15, looseness=0.5] (heap.east);
+
+\end{tikzpicture}
+\caption{Write-path routing to the epistemic TAM. Six user-space SQL paths (top) reach one of the seven overridden callbacks (middle envelope); the callback runs R1--R5, the F6 advisory xact lock, precedence with the F8 xmin tiebreak, and the eviction audit before delegating storage to \texttt{heapam}. Three DDL-privileged paths (right, dashed) bypass the envelope entirely; they are out of scope (Section~\ref{sec:limitations}).}
+\label{fig:writepath}
+\end{figure*}
 
 \subsection{Handler and delegation}
 The AM handler copies the heap AM's \texttt{TableAmRoutine} at first call and overrides seven entries:
@@ -433,7 +498,7 @@ The mock LLM in the Stage-2 baseline is calibrated to a real Anthropic Claude Ha
 A separate non-determinism probe (\texttt{bench/results/stage3\_llm\_nondeterminism\_raw.jsonl}, 500 real API calls: 50 conflicts $\times$ 10 replays each) measured a flip rate of 0 of 50 conflicts (all unanimous over the 10 replays) with 2 of 50 unanimous-but-wrong. Both wrong conflicts had the same signature: incumbent INFERRED with specificity 0 and confidence 0.5, candidate INFERRED with high specificity ($\gg 0$) and confidence below 0.5. KNDB's lattice picks the candidate (higher specificity within the same kind). The LLM picks the incumbent every time: it treats ``same kind, higher confidence'' as decisive over ``same kind, higher specificity,'' which is the opposite of the lattice's (spec, conf) precedence order. This is a systematic disagreement about lattice ordering, not random noise; the ``just run the LLM three times and vote'' fix does not help.
 
 \subsection{Bypass table}
-Table~\ref{tab:bypass} summarises the F2, F18, and F20 bypass-survival results. Each cell corresponds to a scenario in \texttt{scripts/bypass.sh}, \texttt{scripts/update\_forgery.sh}, or \texttt{scripts/delete\_forgery.sh}, which assert against both an epistemic table (\texttt{fact\_native}) and a plain-heap table with a BEFORE-INSERT/UPDATE/DELETE trigger (\texttt{fact\_trigger}). The adversarial disable-and-test rebuilds the extension with the corresponding TAM callback wiring line commented out and confirms the bypass returns; on F20 the dylib SHA-256 flips \texttt{c873ddc4\ldots} $\to$ \texttt{1fb0d572\ldots} $\to$ \texttt{c873ddc4\ldots}. The trigger column marks a scenario \emph{bypassed} whenever a writer with \texttt{INSERT}+\texttt{ALTER TABLE} on the target can turn the trigger off; \emph{bypassed*} marks the two rows where the trigger-based enforcer would survive if the operator opts in to \texttt{ENABLE ALWAYS TRIGGER} but still cannot survive \texttt{DISABLE TRIGGER ALL}.
+Table~\ref{tab:bypass} summarises the F2, F18, and F20 bypass-survival results (scripts \texttt{bypass.sh}, \texttt{update\_forgery.sh}, \texttt{delete\_forgery.sh}); each row's disable-and-test hash flip is recorded in \texttt{DECISIONS.md} (F20: \texttt{c873ddc4} $\to$ \texttt{1fb0d572} $\to$ \texttt{c873ddc4}). Trigger-column marker \emph{bypassed*} denotes the two scenarios where \texttt{ENABLE ALWAYS TRIGGER} survives \texttt{session\_replication\_role='replica'} but still fails under \texttt{DISABLE TRIGGER ALL}.
 
 \begin{table}[t]
 \centering
