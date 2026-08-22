@@ -194,7 +194,7 @@ KNDB is a \texttt{shared\_preload\_libraries} extension of 2238 lines of C in \t
 \node[cb, right=0.15cm of tu]    (td)  {tuple\_delete\\(F20)};
 \node[cb, right=0.15cm of td]    (tis) {tuple\_insert\_\\speculative (F21)};
 \node[cb, right=0.15cm of tis]   (tcs) {tuple\_complete\_\\speculative (F21)};
-\node[cb, right=0.15cm of tcs]   (rta) {relation\_\\toast\_am};
+\node[cb, right=0.15cm of tcs]   (rta) {relation\_\\toast\_am\\{\scriptsize\itshape\upshape(toast routing)}};
 
 % Enforcement annotation (attached below the row)
 \node[below=0.15cm of ti.south west, font=\scriptsize\itshape, anchor=north west, align=left] (enfnote) {enforcement steps run inside each callback:\\R1--R5 rules \,$\to$\, F6 advisory xact lock \,$\to$\, find\_live\_overlap \,$\to$\, precedence \,+\, F8 xmin tiebreak \,$\to$\, heap\_insert of winner \,$\to$\, eviction audit + sys\_time close + rmgr-128 marker};
@@ -206,6 +206,10 @@ KNDB is a \texttt{shared\_preload\_libraries} extension of 2238 lines of C in \t
 
 % Row 3: heapam
 \node[heap, below=0.55cm of env.south] (heap) {heapam};
+
+% Row 4: storage (on-disk pages) --- bypass arrows terminate here, not into heapam
+\node[draw, rounded corners=2pt, fill=gray!8, font=\scriptsize\itshape, minimum width=25mm, minimum height=5mm, below=0.20cm of heap] (storage) {on-disk pages};
+\draw[ar, thick] (heap.south) -- (storage.north);
 
 % Arrows: SQL entries down into TAM callbacks
 \draw[ar] (insert.south) -- (ti.north);
@@ -225,13 +229,14 @@ KNDB is a \texttt{shared\_preload\_libraries} extension of 2238 lines of C in \t
 \node[bypass, below=0.10cm of trunc] (cluster) {CLUSTER /\\VACUUM FULL};
 \node[above=0.02cm of setam, font=\scriptsize\itshape, align=center] {DDL bypasses\\(out of scope, \S8)};
 
-% Bypass arrows: skip the envelope, go straight to heap
-\draw[arb] (setam.west)   to[out=180, in=0, looseness=0.4]   (heap.east);
-\draw[arb] (trunc.west)   to[out=180, in=15, looseness=0.5]  (heap.east);
-\draw[arb] (cluster.west) to[out=180, in=-15, looseness=0.5] (heap.east);
+% Bypass arrows: exit east, drop below the envelope + enforcement text, then swing left
+% to storage.east --- explicitly avoids crossing the enforcement-steps line.
+\draw[arb] (setam.east)   -- ++(0.35, 0) |- (storage.east);
+\draw[arb] (trunc.east)   -- ++(0.35, 0) |- (storage.east);
+\draw[arb] (cluster.east) -- ++(0.35, 0) |- (storage.east);
 
 \end{tikzpicture}
-\caption{Write-path routing to the epistemic TAM. Six user-space SQL paths (top) reach one of the seven overridden callbacks (middle envelope); the callback runs R1--R5, the F6 advisory xact lock, precedence with the F8 xmin tiebreak, and the eviction audit before delegating storage to \texttt{heapam}. Three DDL-privileged paths (right, dashed) bypass the envelope entirely; they are out of scope (Section~\ref{sec:limitations}).}
+\caption{Write-path routing to the epistemic TAM. Six user-space SQL paths (top) reach one of the seven overridden callbacks (middle envelope); the callback runs R1--R5, the F6 advisory xact lock, precedence with the F8 xmin tiebreak, and the eviction audit before delegating storage to \texttt{heapam}. Three DDL-privileged paths (right, dashed) reach on-disk pages without traversing the enforcement envelope; they are out of scope (Section~\ref{sec:limitations}).}
 \label{fig:writepath}
 \end{figure*}
 
